@@ -41,11 +41,18 @@ src-tauri/src/
   crypto/        — Argon2id + AES-256-GCM
   db/            — SQLCipher connection, schema, queries, search
   commands/      — Tauri IPC command handlers
-  state.rs       — AppState
+    auth.rs      — get_app_status, setup_vault, unlock, lock, heartbeat
+    entries.rs   — CRUD, generate_password (random + diceware), clipboard
+    search.rs    — search_entries, recent_entries
+    settings.rs  — get_settings/save_settings (.vaultx-settings JSON)
+    security.rs  — Touch ID (Keychain + LAContext via objc2)
+    recovery.rs  — generate_recovery_kit, recover_with_key
+  state.rs       — AppState (db, master_key, last_activity)
+src-tauri/data/  — EFF diceware word list (embedded at compile time)
 
 src/
   components/    — layout/ lock/ entry/ search/ settings/ ui/
-  stores/        — Zustand stores
+  stores/        — Zustand stores (app, vault, search, settings)
   lib/           — commands.ts (API types + invoke wrappers)
   styles/        — globals.css (design tokens)
 ```
