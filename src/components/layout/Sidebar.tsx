@@ -9,9 +9,14 @@ import {
   Trash2,
   Lock,
   LayoutGrid,
+  Settings,
 } from "lucide-react";
 import { useVaultStore } from "../../stores/vaultStore";
 import { useAppStore } from "../../stores/appStore";
+
+interface SidebarProps {
+  onOpenSettings?: () => void;
+}
 
 const categories = [
   { id: null, label: "All Items", icon: LayoutGrid },
@@ -22,7 +27,7 @@ const categories = [
   { id: "ssh_key", label: "SSH Keys", icon: Terminal },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({ onOpenSettings }: SidebarProps) {
   const categoryFilter = useVaultStore((s) => s.categoryFilter);
   const showTrash = useVaultStore((s) => s.showTrash);
   const setCategoryFilter = useVaultStore((s) => s.setCategoryFilter);
@@ -109,6 +114,13 @@ export function Sidebar() {
 
       {/* Bottom actions */}
       <div className="border-t border-[var(--color-border-light)] pt-[var(--spacing-sm)] flex flex-col gap-px">
+        <button
+          onClick={onOpenSettings}
+          className="flex items-center gap-[var(--spacing-sm)] px-[var(--spacing-sm)] py-[5px] rounded-[var(--radius-md)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
+        >
+          <Settings size={16} />
+          <span>Settings</span>
+        </button>
         <button
           onClick={lock}
           className="flex items-center gap-[var(--spacing-sm)] px-[var(--spacing-sm)] py-[5px] rounded-[var(--radius-md)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"

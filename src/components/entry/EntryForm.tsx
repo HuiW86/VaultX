@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { PasswordField } from "../ui/PasswordField";
 import { StrengthMeter } from "../ui/StrengthMeter";
+import { PasswordGenerator } from "./PasswordGenerator";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { useVaultStore } from "../../stores/vaultStore";
@@ -80,10 +81,10 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       setFields(template.map((t) => ({ ...t, value: "" })));
       // Auto-generate password for new Login entries
       if (category === "login") {
-        api.generatePassword().then((pwd) => {
+        api.generatePassword().then(({ password }) => {
           setFields((prev) =>
             prev.map((f) =>
-              f.field_type === "password" ? { ...f, value: pwd } : f
+              f.field_type === "password" ? { ...f, value: password } : f
             )
           );
         });
@@ -246,6 +247,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
                   onChange={(v) => updateField(index, v)}
                 />
                 <StrengthMeter password={field.value} />
+                <PasswordGenerator onUse={(v) => updateField(index, v)} />
               </div>
             );
           }

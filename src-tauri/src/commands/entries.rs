@@ -237,14 +237,120 @@ pub fn get_category_counts(
     queries::get_category_counts(db, vault_id.as_deref())
 }
 
-#[tauri::command]
-pub fn generate_password() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let charset = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
-    (0..20)
-        .map(|_| charset[rng.gen_range(0..charset.len())] as char)
+#[derive(Debug, Deserialize)]
+pub struct GeneratePasswordParams {
+    pub length: Option<usize>,
+    pub uppercase: Option<bool>,
+    pub lowercase: Option<bool>,
+    pub digits: Option<bool>,
+    pub symbols: Option<bool>,
+    pub mode: Option<String>, // "random" | "words"
+    pub separator: Option<String>,
+    pub word_count: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GeneratedPassword {
+    pub password: String,
+    pub strength: u8, // 0-4 matching zxcvbn scores
+}
+
+// EFF short diceware word list (1296 words, ~13KB embedded)
+const EFF_WORDS: &str = include_str!("../../data/eff-short-wordlist.txt");
+
+fn eff_word_list() -> Vec<&'static str> {
+    EFF_WORDS
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(1))
         .collect()
+}
+
+fn estimate_strength(password: &str) -> u8 {
+    let len = password.len();
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_symbol = password.chars().any(|c| !c.is_alphanumeric());
+    let variety = [has_upper, has_lower, has_digit, has_symbol]
+        .iter()
+        .filter(|&&v| v)
+        .count();
+
+    match (len, variety) {
+        (0..=7, _) => 0,
+        (8..=11, 0..=1) => 1,
+        (8..=11, _) => 2,
+        (12..=19, 0..=2) => 2,
+        (12..=19, _) => 3,
+        (_, _) => 4,
+    }
+}
+
+#[tauri::command]
+pub fn generate_password(params: Option<GeneratePasswordParams>) -> GeneratedPassword {
+    use rand::seq::SliceRandom;
+    use rand::Rng;
+
+    let params = params.unwrap_or(GeneratePasswordParams {
+        length: None,
+        uppercase: None,
+        lowercase: None,
+        digits: None,
+        symbols: None,
+        mode: None,
+        separator: None,
+        word_count: None,
+    });
+
+    let mode = params.mode.as_deref().unwrap_or("random");
+
+    let password = if mode == "words" {
+        let words = eff_word_list();
+        if words.is_empty() {
+            return GeneratedPassword {
+                password: String::new(),
+                strength: 0,
+            };
+        }
+        let mut rng = rand::thread_rng();
+        let count = params.word_count.unwrap_or(5).clamp(3, 10);
+        let sep = params.separator.as_deref().unwrap_or("-");
+        let selected: Vec<&str> = (0..count)
+            .map(|_| *words.choose(&mut rng).unwrap())
+            .collect();
+        selected.join(sep)
+    } else {
+        let length = params.length.unwrap_or(20).clamp(8, 128);
+        let use_upper = params.uppercase.unwrap_or(true);
+        let use_lower = params.lowercase.unwrap_or(true);
+        let use_digits = params.digits.unwrap_or(true);
+        let use_symbols = params.symbols.unwrap_or(true);
+
+        let mut charset = Vec::new();
+        if use_upper {
+            charset.extend_from_slice(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        }
+        if use_lower {
+            charset.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
+        }
+        if use_digits {
+            charset.extend_from_slice(b"0123456789");
+        }
+        if use_symbols {
+            charset.extend_from_slice(b"!@#$%^&*()-_=+[]{}|;:,.<>?");
+        }
+        if charset.is_empty() {
+            charset.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
+        }
+
+        let mut rng = rand::thread_rng();
+        (0..length)
+            .map(|_| charset[rng.gen_range(0..charset.len())] as char)
+            .collect()
+    };
+
+    let strength = estimate_strength(&password);
+    GeneratedPassword { password, strength }
 }
 
 #[tauri::command]

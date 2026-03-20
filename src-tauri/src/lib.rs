@@ -4,6 +4,7 @@ pub mod db;
 mod state;
 
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const QUICK_ACCESS_LABEL: &str = "quickaccess";
@@ -38,6 +39,40 @@ pub fn run() {
             let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
             app.global_shortcut().register(shortcut)?;
 
+            // Spawn auto-lock timer thread (polls every 30s)
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(30));
+                    let state = handle.state::<Mutex<state::AppState>>();
+                    let should_lock = {
+                        let app = match state.lock() {
+                            Ok(a) => a,
+                            Err(_) => continue,
+                        };
+                        if !app.is_unlocked() {
+                            continue;
+                        }
+                        let Some(last) = app.last_activity else {
+                            continue;
+                        };
+                        // Read settings for timeout
+                        let settings = commands::settings::read_settings(&app.data_dir);
+                        if settings.auto_lock_timeout_minutes < 0 {
+                            continue; // "Never" auto-lock
+                        }
+                        let timeout = Duration::from_secs(settings.auto_lock_timeout_minutes as u64 * 60);
+                        last.elapsed() > timeout
+                    };
+                    if should_lock {
+                        if let Ok(mut app) = state.lock() {
+                            app.clear();
+                        }
+                        let _ = handle.emit("app:locked", ());
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -46,6 +81,7 @@ pub fn run() {
             commands::auth::setup_vault,
             commands::auth::unlock,
             commands::auth::lock,
+            commands::auth::heartbeat,
             // Entries
             commands::entries::create_entry,
             commands::entries::get_entry,
@@ -59,6 +95,17 @@ pub fn run() {
             // Search
             commands::search::search_entries,
             commands::search::recent_entries,
+            // Settings
+            commands::settings::get_settings,
+            commands::settings::save_settings,
+            // Security (Touch ID)
+            commands::security::is_touch_id_available,
+            commands::security::setup_touch_id,
+            commands::security::disable_touch_id,
+            commands::security::unlock_biometric,
+            // Recovery
+            commands::recovery::generate_recovery_kit,
+            commands::recovery::recover_with_key,
         ])
         .on_window_event(|window, event| {
             // Auto-hide Quick Access when it loses focus

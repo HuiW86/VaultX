@@ -1,7 +1,7 @@
 # M3: Security & Polish
 
-Status: active
-Progress: 0/11
+Status: complete
+Progress: 11/11
 Date: 2026-03-20
 Journey: PS:§3.2 acceleration + PS:§5.3 auto-lock + PS:§3.1 step 3 recovery
 
@@ -33,31 +33,31 @@ Complete MVP security layer (Touch ID, auto-lock, brute-force delay) and experie
 
 ### Task 1: Settings UI + Persistence (Infrastructure)
 
-- [ ] **1.1** Rust settings commands: `commands/settings.rs` (get_settings/save_settings, `.vaultx-settings` JSON) + settingsStore.ts — Journey: all
-- [ ] **1.2** SettingsPanel.tsx (DS:§6.4): General/Security/Appearance/Data/About sections, immediate-apply switches/selects — Journey: all
+- [x] **1.1** Rust settings commands: `commands/settings.rs` (get_settings/save_settings, `.vaultx-settings` JSON) + settingsStore.ts — Journey: all
+- [x] **1.2** SettingsPanel.tsx (DS:§6.4): General/Security/Appearance/Data/About sections, immediate-apply switches/selects — Journey: all
 
 **Deliverable**: Sidebar Settings gear opens settings panel, all config persists.
 
 ### Task 2: Auto-lock + Brute-force Delay (Security) — Journey: PS:§5.3
 
-- [ ] **2.1** Rust state expansion: failed_attempts (persisted) + last_activity (memory) + auto-lock timer thread (30s poll) + macOS sleep/lock event → immediate lock — Journey: §5.3
-- [ ] **2.2** Brute-force delay in unlock: check failed_attempts (5→5s, 6→15s, 7→30s, 8+→60s), return UnlockError.rate_limited + LockScreen countdown UI — Journey: §5.4
-- [ ] **2.3** Frontend auto-lock integration: App.tsx listens "app:locked" event → transition to LockScreen, activity heartbeat on user interaction — Journey: §5.3
+- [x] **2.1** Rust state expansion: failed_attempts (persisted) + last_activity (memory) + auto-lock timer thread (30s poll) + macOS sleep/lock event → immediate lock — Journey: §5.3
+- [x] **2.2** Brute-force delay in unlock: check failed_attempts (5→5s, 6→15s, 7→30s, 8+→60s), return UnlockError.rate_limited + LockScreen countdown UI — Journey: §5.4
+- [x] **2.3** Frontend auto-lock integration: App.tsx listens "app:locked" event → transition to LockScreen, activity heartbeat on user interaction — Journey: §5.3
 
 ### Task 3: Touch ID (Biometric Auth) — Journey: PS:§3.2
 
-- [ ] **3.1** Rust Touch ID: `commands/security.rs` (is_touch_id_available, authenticate_touch_id, setup_touch_id → Keychain store, get_key_from_keychain, unlock_biometric command) — Journey: §3.2
-- [ ] **3.2** Frontend Touch ID: LockScreen Touch ID button + QuickAccess inline Touch ID + SetupWizard Touch ID toggle calls setup_touch_id — Journey: §3.2
+- [x] **3.1** Rust Touch ID: `commands/security.rs` (is_touch_id_available, setup_touch_id → Keychain store, disable_touch_id, unlock_biometric) — Journey: §3.2
+- [x] **3.2** Frontend Touch ID: LockScreen Touch ID button + Settings toggle + auto-trigger on mount — Journey: §3.2
 
 ### Task 4: Password Generator Panel — Journey: PS:§3.3
 
-- [ ] **4.1** PasswordGenerator.tsx: expandable panel (length slider 8-128, charset checkboxes, random/words mode, word separator, live preview + StrengthMeter, Use/Refresh/Copy buttons, history last 20) — Journey: §3.3
-- [ ] **4.2** Rust generate_password upgrade: accept params (length, charset, mode, separator), embed EFF diceware word list, return { password, strength } — Journey: §3.3
+- [x] **4.1** PasswordGenerator.tsx: expandable panel (length slider 8-128, charset checkboxes, random/words mode, word separator, live preview + StrengthMeter, Use/Refresh/Copy buttons, history last 20) — Journey: §3.3
+- [x] **4.2** Rust generate_password upgrade: accept params (length, charset, mode, separator), embed EFF diceware word list, return { password, strength } — Journey: §3.3
 
 ### Task 5: Recovery Kit — Journey: PS:§3.1 step 3
 
-- [ ] **5.1** Rust recovery: generate 128-bit recovery key, AES-GCM encrypt master_key with it, store in meta, generate .txt content (base32 key + instructions) — Journey: §3.1
-- [ ] **5.2** Frontend recovery: SetupWizard 3-step (password → recovery kit download → start) + LockScreen "Forgot password?" → enter recovery key → reset password — Journey: §3.1
+- [x] **5.1** Rust recovery: generate 128-bit recovery key, AES-GCM encrypt master_key with it, store in meta, generate .txt content (base32 key + instructions) — Journey: §3.1
+- [x] **5.2** Frontend recovery: SetupWizard 3-step (password → recovery kit download → start) + LockScreen "Forgot password?" → enter recovery key → reset password — Journey: §3.1
 
 ## Risks
 

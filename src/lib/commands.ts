@@ -72,6 +72,16 @@ export interface Vault {
   updated_at: string;
 }
 
+export interface VaultxSettings {
+  auto_lock_timeout_minutes: number;
+  lock_on_sleep: boolean;
+  clipboard_clear_seconds: number;
+  touch_id_enabled: boolean;
+  theme: string;
+  start_at_login: boolean;
+  show_in_menu_bar: boolean;
+}
+
 // -- API calls --
 
 export const api = {
@@ -79,6 +89,7 @@ export const api = {
   setupVault: (password: string) => invoke<void>("setup_vault", { password }),
   unlock: (password: string) => invoke<UnlockResult>("unlock", { password }),
   lock: () => invoke<void>("lock"),
+  heartbeat: () => invoke<void>("heartbeat"),
 
   listVaults: () => invoke<Vault[]>("list_vaults"),
   createEntry: (input: {
@@ -110,7 +121,16 @@ export const api = {
   getCategoryCounts: (vaultId?: string) =>
     invoke<[string, number][]>("get_category_counts", { vaultId }),
 
-  generatePassword: () => invoke<string>("generate_password"),
+  generatePassword: (params?: {
+    length?: number;
+    uppercase?: boolean;
+    lowercase?: boolean;
+    digits?: boolean;
+    symbols?: boolean;
+    mode?: "random" | "words";
+    separator?: string;
+    word_count?: number;
+  }) => invoke<{ password: string; strength: number }>("generate_password", { params }),
 
   copyToClipboard: (value: string, clearAfterMs?: number) =>
     invoke<void>("copy_to_clipboard", { value, clearAfterMs }),
@@ -121,4 +141,21 @@ export const api = {
 
   recentEntries: (limit?: number) =>
     invoke<EntrySummary[]>("recent_entries", { limit }),
+
+  // Settings
+  getSettings: () => invoke<VaultxSettings>("get_settings"),
+  saveSettings: (settings: VaultxSettings) =>
+    invoke<void>("save_settings", { settings }),
+
+  // Security (Touch ID)
+  isTouchIdAvailable: () => invoke<boolean>("is_touch_id_available"),
+  setupTouchId: () => invoke<void>("setup_touch_id"),
+  disableTouchId: () => invoke<void>("disable_touch_id"),
+  unlockBiometric: () => invoke<void>("unlock_biometric"),
+
+  // Recovery
+  generateRecoveryKit: () =>
+    invoke<{ recovery_key: string; file_content: string }>("generate_recovery_kit"),
+  recoverWithKey: (recoveryKey: string, newPassword: string) =>
+    invoke<void>("recover_with_key", { recoveryKey, newPassword }),
 };

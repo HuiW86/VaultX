@@ -17,6 +17,9 @@ pub struct VaultMeta {
     pub kdf: KdfConfig,
     pub created_at: String,
     pub db_path: String,
+    /// Base64-encoded AES-GCM encrypted master_key (encrypted by recovery key)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_blob: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -229,6 +232,7 @@ mod tests {
             },
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
+            recovery_blob: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -276,6 +280,7 @@ mod tests {
             },
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
+            recovery_blob: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -301,6 +306,7 @@ mod tests {
             },
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
+            recovery_blob: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 

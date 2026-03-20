@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use std::path::PathBuf;
+use std::time::Instant;
 use zeroize::Zeroizing;
 
 /// Application state held in memory, wrapped in Mutex by Tauri.
@@ -15,6 +16,8 @@ pub struct AppState {
     pub master_key: Option<Zeroizing<[u8; 32]>>,
     /// Path to the data directory
     pub data_dir: PathBuf,
+    /// Last user activity timestamp (memory-only, for auto-lock)
+    pub last_activity: Option<Instant>,
 }
 
 impl AppState {
@@ -23,6 +26,7 @@ impl AppState {
             db: None,
             master_key: None,
             data_dir,
+            last_activity: None,
         }
     }
 
@@ -31,9 +35,15 @@ impl AppState {
     pub fn clear(&mut self) {
         self.master_key = None; // Zeroizing<T> zeros memory on drop
         self.db = None; // Closes connection
+        self.last_activity = None;
     }
 
     pub fn is_unlocked(&self) -> bool {
         self.db.is_some() && self.master_key.is_some()
+    }
+
+    /// Record user activity for auto-lock tracking
+    pub fn touch_activity(&mut self) {
+        self.last_activity = Some(Instant::now());
     }
 }
