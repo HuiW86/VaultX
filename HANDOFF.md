@@ -2,20 +2,21 @@
 <!-- /checkpoint at 2026-03-21 -->
 
 ## Session Tasks
-- [x] i18n 系统（src/i18n/，185 keys，en + zh-CN，Settings 语言切换）
-- [x] 测试修复（renderWithI18n wrapper + mock get_settings）
-- [x] 体系反哺（/spec, /product-design, /plan, /test Skill 更新 + QUICKSTART 案例）
+- [x] i18n 系统（185 keys, en/zh-CN, Settings 语言切换）
+- [x] 测试修复（renderWithI18n + mock get_settings）
+- [x] 体系反哺：/spec, /product-design, /plan, /test, /checkpoint Skill 更新
+- [x] 体系反哺：product-spec-template 更新，QUICKSTART 案例补充
 
 ## Current State
 - All milestones complete (M1 + M2 + M3 + i18n), daily-driveable MVP
-- Frontend: 14 tests passing, Rust: 50 tests passing
-- ai-dev-lifecycle skills updated with VaultX lessons (commit a6b43c5)
+- Frontend: 14 tests, Rust: 50 tests, all passing
+- ai-dev-lifecycle updated: a6b43c5, 83e4cf6, 1570c47
 
 ## Key Files
-- `src/i18n/` — i18n system (en.ts, zh-CN.ts, context + hook)
-- `src/test/test-utils.tsx` — renderWithI18n test helper
-- `CLAUDE.md` — updated with i18n conventions
+- `src/i18n/` — i18n system (context + hook, zero deps)
+- `src/test/test-utils.tsx` — renderWithI18n helper
+- `CLAUDE.md` — includes i18n conventions
 
 ## Next Steps
-- Use the app for a while, collect feedback
+- Use the app, collect feedback
 - Optional: multi-vault, tags, import/export, browser extension
