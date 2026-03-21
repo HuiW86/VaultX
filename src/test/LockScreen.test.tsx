@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { LockScreen } from "../components/lock/LockScreen";
 import { useAppStore } from "../stores/appStore";
+import { renderWithI18n } from "./test-utils";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -14,8 +15,8 @@ beforeEach(() => {
 
 describe("LockScreen", () => {
   it("renders password input and unlock button", () => {
-    render(<LockScreen />);
-    expect(screen.getByLabelText("Master password")).toBeInTheDocument();
+    renderWithI18n(<LockScreen />);
+    expect(screen.getByPlaceholderText("Master password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /unlock/i })).toBeInTheDocument();
   });
 
@@ -23,8 +24,8 @@ describe("LockScreen", () => {
     mockInvoke.mockResolvedValueOnce({ success: true });
     const user = userEvent.setup();
 
-    render(<LockScreen />);
-    await user.type(screen.getByLabelText("Master password"), "my-password");
+    renderWithI18n(<LockScreen />);
+    await user.type(screen.getByPlaceholderText("Master password"), "my-password");
     await user.click(screen.getByRole("button", { name: /unlock/i }));
 
     await waitFor(() => {
@@ -44,8 +45,8 @@ describe("LockScreen", () => {
     });
 
     const user = userEvent.setup();
-    render(<LockScreen />);
-    await user.type(screen.getByLabelText("Master password"), "wrong");
+    renderWithI18n(<LockScreen />);
+    await user.type(screen.getByPlaceholderText("Master password"), "wrong");
     await user.click(screen.getByRole("button", { name: /unlock/i }));
 
     await waitFor(() => {
