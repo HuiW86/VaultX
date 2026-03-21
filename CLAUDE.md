@@ -53,9 +53,18 @@ src-tauri/data/  — EFF diceware word list (embedded at compile time)
 src/
   components/    — layout/ lock/ entry/ search/ settings/ ui/
   stores/        — Zustand stores (app, vault, search, settings)
+  i18n/          — i18n system (en.ts, zh-CN.ts, context + hook)
   lib/           — commands.ts (API types + invoke wrappers)
   styles/        — globals.css (design tokens)
 ```
+
+### Internationalization (i18n)
+- Lightweight: React Context + `useTranslation()` hook, zero dependencies
+- Translations: `src/i18n/en.ts` (source of truth), `src/i18n/zh-CN.ts`
+- All UI text uses `t("key")` calls, never hardcoded strings
+- Language setting persisted in `.vaultx-settings` via `VaultxSettings.language`
+- `I18nProvider` wraps the app in `App.tsx`, reads locale from settingsStore
+- Tests use `renderWithI18n()` wrapper from `src/test/test-utils.tsx`
 
 ### Design Spec Reference
 Before generating UI code, check:
