@@ -76,7 +76,7 @@ function App() {
   }, [status, lock]);
 
   return (
-    <I18nProvider locale={settingsLoaded ? language : "en"}>
+    <I18nProvider locale={language}>
       <ToastProvider>
         <AppContent status={status} corruptReason={corruptReason} searchInputRef={searchInputRef} />
       </ToastProvider>

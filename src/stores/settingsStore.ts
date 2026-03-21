@@ -35,5 +35,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ settings: merged });
   },
 
-  reset: () => set({ settings: defaults, loaded: false }),
+  reset: () => {
+    // Preserve language setting across lock — it's not sensitive and the lock screen needs it
+    const { language } = get().settings;
+    set({ settings: { ...defaults, language }, loaded: false });
+  },
 }));
