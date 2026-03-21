@@ -4,6 +4,12 @@ Local-first password manager for macOS. Your passwords never leave your machine.
 
 本地优先的 macOS 密码管理器。你的密码永远不会离开你的设备。
 
+## Screenshots / 截图
+
+| Lock Screen / 锁屏 | Main View / 主界面 | Entry Form / 新建条目 |
+|:---:|:---:|:---:|
+| ![Lock Screen](docs/screenshots/lock-screen.png) | ![Main View](docs/screenshots/main-view.png) | ![Entry Form](docs/screenshots/entry-form.png) |
+
 ## Why VaultX? / 为什么选择 VaultX？
 
 Mainstream password managers (1Password, LastPass) force cloud subscriptions. VaultX keeps everything local with a polished, modern UI inspired by 1Password 8.

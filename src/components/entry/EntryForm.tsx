@@ -12,41 +12,59 @@ import { api, type EntryDetailResponse, type FieldInputDto } from "../../lib/com
 import { useTranslation } from "../../i18n";
 
 // Category templates — PS:§2.4
-const categoryTemplates: Record<string, { field_type: string; label: string }[]> = {
+// Labels use i18n keys — translated at render time via t()
+const categoryTemplates: Record<string, { field_type: string; labelKey: string }[]> = {
   login: [
-    { field_type: "username", label: "Username" },
-    { field_type: "password", label: "Password" },
-    { field_type: "url", label: "Website" },
+    { field_type: "username", labelKey: "form.username" },
+    { field_type: "password", labelKey: "form.password" },
+    { field_type: "url", labelKey: "form.website" },
   ],
   card: [
-    { field_type: "text", label: "Cardholder Name" },
-    { field_type: "card_number", label: "Card Number" },
-    { field_type: "text", label: "Expiry" },
-    { field_type: "hidden", label: "CVV" },
-    { field_type: "hidden", label: "PIN" },
+    { field_type: "text", labelKey: "form.cardholder" },
+    { field_type: "card_number", labelKey: "form.card_number" },
+    { field_type: "text", labelKey: "form.expiry" },
+    { field_type: "hidden", labelKey: "form.cvv" },
+    { field_type: "hidden", labelKey: "form.pin" },
   ],
-  note: [{ field_type: "text", label: "Note" }],
+  note: [{ field_type: "text", labelKey: "form.note" }],
   identity: [
-    { field_type: "text", label: "Full Name" },
-    { field_type: "text", label: "Email" },
-    { field_type: "text", label: "Phone" },
-    { field_type: "text", label: "Address" },
+    { field_type: "text", labelKey: "form.full_name" },
+    { field_type: "text", labelKey: "form.email" },
+    { field_type: "text", labelKey: "form.phone" },
+    { field_type: "text", labelKey: "form.address" },
   ],
   ssh_key: [
-    { field_type: "hidden", label: "Private Key" },
-    { field_type: "text", label: "Public Key" },
-    { field_type: "text", label: "Fingerprint" },
-    { field_type: "password", label: "Passphrase" },
+    { field_type: "hidden", labelKey: "form.private_key" },
+    { field_type: "text", labelKey: "form.public_key" },
+    { field_type: "text", labelKey: "form.fingerprint" },
+    { field_type: "password", labelKey: "form.passphrase" },
   ],
 };
 
 const categoryMeta = [
-  { id: "login", label: "Login", icon: Key, color: "var(--color-primary)" },
-  { id: "card", label: "Card", icon: CreditCard, color: "var(--color-warning)" },
-  { id: "note", label: "Note", icon: FileText, color: "var(--color-accent)" },
-  { id: "identity", label: "Identity", icon: User, color: "var(--color-success)" },
-  { id: "ssh_key", label: "SSH Key", icon: Terminal, color: "var(--color-text-secondary)" },
+  { id: "login", labelKey: "category.login", icon: Key, color: "var(--color-primary)" },
+  { id: "card", labelKey: "category.card", icon: CreditCard, color: "var(--color-warning)" },
+  { id: "note", labelKey: "category.note", icon: FileText, color: "var(--color-accent)" },
+  { id: "identity", labelKey: "category.identity", icon: User, color: "var(--color-success)" },
+  { id: "ssh_key", labelKey: "category.ssh_key", icon: Terminal, color: "var(--color-text-secondary)" },
 ];
+
+// Reverse lookup: stored label text → i18n key (for editing existing entries)
+const labelToKey: Record<string, string> = {
+  // English labels
+  "Username": "form.username", "Password": "form.password", "Website": "form.website",
+  "Cardholder Name": "form.cardholder", "Card Number": "form.card_number", "Expiry": "form.expiry",
+  "CVV": "form.cvv", "PIN": "form.pin", "Note": "form.note",
+  "Full Name": "form.full_name", "Email": "form.email", "Phone": "form.phone",
+  "Address": "form.address", "Private Key": "form.private_key", "Public Key": "form.public_key",
+  "Fingerprint": "form.fingerprint", "Passphrase": "form.passphrase",
+  // Chinese labels
+  "用户名": "form.username", "密码": "form.password", "网址": "form.website",
+  "持卡人姓名": "form.cardholder", "卡号": "form.card_number", "有效期": "form.expiry",
+  "备注": "form.note", "姓名": "form.full_name", "邮箱": "form.email",
+  "电话": "form.phone", "地址": "form.address", "私钥": "form.private_key",
+  "公钥": "form.public_key", "指纹": "form.fingerprint", "密码短语": "form.passphrase",
+};
 
 interface EntryFormProps {
   mode: "new" | "edit";
@@ -59,7 +77,7 @@ interface EntryFormProps {
 export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: EntryFormProps) {
   const { t } = useTranslation();
   const [title, setTitle] = useState(existingEntry?.entry.title || "");
-  const [fields, setFields] = useState<{ field_type: string; label: string; value: string }[]>([]);
+  const [fields, setFields] = useState<{ field_type: string; labelKey: string; value: string }[]>([]);
   const [titleError, setTitleError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
@@ -74,13 +92,13 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       setFields(
         existingEntry.fields.map((f) => ({
           field_type: f.field_type,
-          label: f.label,
+          labelKey: labelToKey[f.label] || f.label,
           value: f.value,
         }))
       );
     } else {
       const template = categoryTemplates[category] || [];
-      setFields(template.map((t) => ({ ...t, value: "" })));
+      setFields(template.map((tmpl) => ({ ...tmpl, value: "" })));
       // Auto-generate password for new Login entries
       if (category === "login") {
         api.generatePassword().then(({ password }) => {
@@ -110,7 +128,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       try {
         const fieldInputs: FieldInputDto[] = fields.map((f, i) => ({
           field_type: f.field_type,
-          label: f.label,
+          label: t(f.labelKey),
           value: f.value,
           sort_order: i,
         }));
@@ -122,8 +140,8 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
           const num = fields.find((f) => f.field_type === "card_number")?.value || "";
           subtitle = num.length >= 4 ? `•••• ${num.slice(-4)}` : undefined;
         } else if (category === "note") subtitle = fields[0]?.value?.slice(0, 40);
-        else if (category === "identity") subtitle = fields.find((f) => f.label === "Full Name")?.value;
-        else if (category === "ssh_key") subtitle = fields.find((f) => f.label === "Fingerprint")?.value;
+        else if (category === "identity") subtitle = fields.find((f) => f.labelKey === "form.full_name")?.value;
+        else if (category === "ssh_key") subtitle = fields.find((f) => f.labelKey === "form.fingerprint")?.value;
 
         if (mode === "new") {
           // Need vault ID — get first vault
@@ -184,7 +202,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       {/* Header */}
       <div className="flex items-center justify-between mb-[var(--spacing-xl)]">
         <h2 className="text-[var(--font-size-h2)] font-[var(--font-weight-semibold)]">
-          {mode === "new" ? t("form.new", { category: categoryMeta.find((c) => c.id === category)?.label ?? category }) : t("form.edit")}
+          {mode === "new" ? t("form.new", { category: t(categoryMeta.find((c) => c.id === category)?.labelKey ?? "category.login") }) : t("form.edit")}
         </h2>
         <div className="flex gap-[var(--spacing-sm)]">
           <Button variant="ghost" onClick={handleCancel}>{t("form.cancel")}</Button>
@@ -197,14 +215,14 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       {/* Category selector for new entries */}
       {mode === "new" && (
         <div className="flex gap-[var(--spacing-sm)] mb-[var(--spacing-xl)]">
-          {categoryMeta.map(({ id, label, icon: Icon, color }) => (
+          {categoryMeta.map(({ id, labelKey, icon: Icon, color }) => (
             <button
               key={id}
               onClick={() => {
                 // Re-initialize form with new category
                 window.location.hash = ""; // Force re-render
                 setFields(
-                  (categoryTemplates[id] || []).map((t) => ({ ...t, value: "" }))
+                  (categoryTemplates[id] || []).map((tmpl) => ({ ...tmpl, value: "" }))
                 );
                 setTitle("");
               }}
@@ -215,7 +233,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
               }`}
             >
               <Icon size={14} style={{ color: id === category ? color : undefined }} />
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>
@@ -240,11 +258,12 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
         />
 
         {fields.map((field, index) => {
+          const label = t(field.labelKey);
           if (field.field_type === "password") {
             return (
               <div key={index} className="flex flex-col gap-[var(--spacing-xs)]">
                 <PasswordField
-                  label={field.label}
+                  label={label}
                   value={field.value}
                   onChange={(v) => updateField(index, v)}
                 />
@@ -258,25 +277,27 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
             return (
               <PasswordField
                 key={index}
-                label={field.label}
+                label={label}
                 value={field.value}
                 onChange={(v) => updateField(index, v)}
               />
             );
           }
 
-          if (field.label === "Note" || field.label === "Address" || field.label === "Private Key" || field.label === "Public Key") {
+          const textareaKeys = ["form.note", "form.address", "form.private_key", "form.public_key"];
+          const isKeyField = field.labelKey === "form.private_key" || field.labelKey === "form.public_key";
+          if (textareaKeys.includes(field.labelKey)) {
             return (
               <div key={index} className="flex flex-col gap-[var(--spacing-xs)]">
                 <label className="text-[var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-text-secondary)]">
-                  {field.label}
+                  {label}
                 </label>
                 <textarea
                   value={field.value}
                   onChange={(e) => updateField(index, e.target.value)}
-                  rows={field.label === "Private Key" || field.label === "Public Key" ? 6 : 3}
+                  rows={isKeyField ? 6 : 3}
                   className="px-[var(--spacing-md)] py-[var(--spacing-sm)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)] resize-y font-[var(--font-mono)]"
-                  style={{ fontFamily: field.label.includes("Key") ? "var(--font-mono)" : undefined }}
+                  style={{ fontFamily: isKeyField ? "var(--font-mono)" : undefined }}
                 />
               </div>
             );
@@ -285,7 +306,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
           return (
             <Input
               key={index}
-              label={field.label}
+              label={label}
               value={field.value}
               onChange={(e) => updateField(index, e.target.value)}
             />
