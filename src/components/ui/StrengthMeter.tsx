@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import zxcvbn from "zxcvbn";
+import { useTranslation } from "../../i18n";
 
 interface StrengthMeterProps {
   password: string;
 }
 
-const labels = ["Very weak", "Weak", "Fair", "Strong", "Very strong"];
 const colors = [
   "var(--color-error)",
   "var(--color-error)",
@@ -18,6 +18,14 @@ const widths = ["10%", "25%", "50%", "75%", "100%"];
 export function StrengthMeter({ password }: StrengthMeterProps) {
   const [score, setScore] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { t } = useTranslation();
+  const labels = [
+    t("strength.very_weak"),
+    t("strength.weak"),
+    t("strength.fair"),
+    t("strength.strong"),
+    t("strength.very_strong"),
+  ];
 
   useEffect(() => {
     if (!password) {
@@ -44,7 +52,7 @@ export function StrengthMeter({ password }: StrengthMeterProps) {
         aria-valuenow={score}
         aria-valuemin={0}
         aria-valuemax={4}
-        aria-label="Password strength"
+        aria-label={t("strength.aria_label")}
       >
         <div
           className="h-full rounded-full transition-all duration-[var(--duration-normal)]"

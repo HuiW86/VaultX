@@ -7,6 +7,7 @@ import { SearchBar } from "../search/SearchBar";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { EntryCardSkeleton } from "../ui/Skeleton";
+import { useTranslation } from "../../i18n";
 
 interface EntryListProps {
   onNewEntry?: () => void;
@@ -14,6 +15,7 @@ interface EntryListProps {
 }
 
 export function EntryList({ onNewEntry, searchInputRef }: EntryListProps) {
+  const { t } = useTranslation();
   const entries = useVaultStore((s) => s.entries);
   const selectedEntryId = useVaultStore((s) => s.selectedEntryId);
   const selectEntry = useVaultStore((s) => s.selectEntry);
@@ -54,7 +56,7 @@ export function EntryList({ onNewEntry, searchInputRef }: EntryListProps) {
     <div
       className="flex flex-col h-full"
       role="listbox"
-      aria-label="Entries"
+      aria-label={t("entry_list.entries")}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -65,16 +67,16 @@ export function EntryList({ onNewEntry, searchInputRef }: EntryListProps) {
       <div className="flex items-center justify-between px-[var(--spacing-md)] py-[var(--spacing-xs)]">
         <span className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)]">
           {isSearchActive
-            ? `${searchResults.length} results`
+            ? t("entry_list.results", { count: searchResults.length })
             : showTrash
-              ? "Trash"
-              : `${entries.length} items`}
+              ? t("entry_list.trash")
+              : t("entry_list.items", { count: entries.length })}
         </span>
         {!showTrash && !isSearchActive && onNewEntry && (
           <button
             onClick={onNewEntry}
             className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] rounded transition-colors"
-            aria-label="New entry"
+            aria-label={t("entry_list.new_entry")}
           >
             <Plus size={18} />
           </button>
@@ -94,19 +96,19 @@ export function EntryList({ onNewEntry, searchInputRef }: EntryListProps) {
         ) : displayEntries.length === 0 ? (
           isSearchActive ? (
             <EmptyState
-              title="No matching items"
-              description="Try a different search"
+              title={t("entry_list.no_matching")}
+              description={t("entry_list.try_different")}
             />
           ) : showTrash ? (
             <EmptyState
-              title="Trash is empty"
-              description="Items you delete will appear here"
+              title={t("entry_list.trash_empty")}
+              description={t("entry_list.trash_empty_desc")}
             />
           ) : (
             <EmptyState
-              title="Your vault is empty"
-              description="Add your first login to get started"
-              actionLabel="+ Add Item"
+              title={t("entry_list.vault_empty")}
+              description={t("entry_list.vault_empty_desc")}
+              actionLabel={t("entry_list.add_item")}
               onAction={onNewEntry}
             />
           )

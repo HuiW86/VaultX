@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, RefreshCw, Copy, Check } from "lucide-react";
 import { Button } from "../ui/Button";
 import { StrengthMeter } from "../ui/StrengthMeter";
 import { api } from "../../lib/commands";
+import { useTranslation } from "../../i18n";
 
 interface PasswordGeneratorProps {
   onUse: (password: string) => void;
@@ -10,15 +11,17 @@ interface PasswordGeneratorProps {
 
 type Mode = "random" | "words";
 
-const separatorOptions = [
-  { value: "-", label: "Hyphen (-)" },
-  { value: ".", label: "Dot (.)" },
-  { value: " ", label: "Space" },
-  { value: "_", label: "Underscore (_)" },
-  { value: "", label: "None" },
-];
-
 export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
+  const { t } = useTranslation();
+
+  const separatorOptions = [
+    { value: "-", label: t("generator.separator_hyphen") },
+    { value: ".", label: t("generator.separator_dot") },
+    { value: " ", label: t("generator.separator_space") },
+    { value: "_", label: t("generator.separator_underscore") },
+    { value: "", label: t("generator.separator_none") },
+  ];
+
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("random");
   const [length, setLength] = useState(20);
@@ -61,7 +64,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
         className="flex items-center gap-[var(--spacing-xs)] text-[var(--font-size-sm)] text-[var(--color-primary)] hover:underline cursor-pointer"
       >
         <ChevronDown size={14} />
-        Password Generator
+        {t("generator.title")}
       </button>
     );
   }
@@ -74,7 +77,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
         onClick={() => setOpen(false)}
         className="w-full flex items-center justify-between px-[var(--spacing-md)] py-[var(--spacing-sm)] bg-[var(--color-bg-elevated)] text-[var(--font-size-sm)] text-[var(--color-primary)] cursor-pointer"
       >
-        <span>Password Generator</span>
+        <span>{t("generator.title")}</span>
         <ChevronUp size={14} />
       </button>
 
@@ -92,7 +95,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
                   : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
               }`}
             >
-              {m === "random" ? "Random" : "Words"}
+              {m === "random" ? t("generator.random") : t("generator.words")}
             </button>
           ))}
         </div>
@@ -102,7 +105,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
             {/* Length slider */}
             <div className="flex items-center gap-[var(--spacing-md)]">
               <span className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] w-14">
-                Length
+                {t("generator.length")}
               </span>
               <input
                 type="range"
@@ -124,10 +127,10 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
 
             {/* Charset checkboxes */}
             <div className="grid grid-cols-2 gap-[var(--spacing-sm)]">
-              <Checkbox label="Uppercase" checked={uppercase} onChange={setUppercase} />
-              <Checkbox label="Lowercase" checked={lowercase} onChange={setLowercase} />
-              <Checkbox label="Digits" checked={digits} onChange={setDigits} />
-              <Checkbox label="Symbols" checked={symbols} onChange={setSymbols} />
+              <Checkbox label={t("generator.uppercase")} checked={uppercase} onChange={setUppercase} />
+              <Checkbox label={t("generator.lowercase")} checked={lowercase} onChange={setLowercase} />
+              <Checkbox label={t("generator.digits")} checked={digits} onChange={setDigits} />
+              <Checkbox label={t("generator.symbols")} checked={symbols} onChange={setSymbols} />
             </div>
           </>
         ) : (
@@ -135,7 +138,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
             {/* Word count */}
             <div className="flex items-center gap-[var(--spacing-md)]">
               <span className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] w-14">
-                Words
+                {t("generator.word_count")}
               </span>
               <input
                 type="range"
@@ -153,7 +156,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
             {/* Separator */}
             <div className="flex items-center gap-[var(--spacing-md)]">
               <span className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] w-14">
-                Separator
+                {t("generator.separator")}
               </span>
               <select
                 value={separator}
@@ -193,15 +196,15 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
               setOpen(false);
             }}
           >
-            Use
+            {t("generator.use")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={generate}>
             <RefreshCw size={14} />
-            Refresh
+            {t("generator.refresh")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={handleCopy}>
             {copied ? <Check size={14} /> : <Copy size={14} />}
-            {copied ? "Copied" : "Copy"}
+            {copied ? t("generator.copied") : t("generator.copy")}
           </Button>
         </div>
 
@@ -209,7 +212,7 @@ export function PasswordGenerator({ onUse }: PasswordGeneratorProps) {
         {history.length > 1 && (
           <div>
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] mb-[var(--spacing-xs)]">
-              Recent ({history.length - 1})
+              {t("generator.recent", { count: history.length - 1 })}
             </p>
             <div className="max-h-24 overflow-y-auto space-y-px">
               {history.slice(1, 6).map((h, i) => (

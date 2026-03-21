@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Pencil, Trash2, Link, User } from "lucide-react";
+import { useTranslation } from "../../i18n";
 
 interface ContextMenuItem {
   label: string;
@@ -84,6 +85,7 @@ export function ContextMenu({ open, x, y, onClose, items }: ContextMenuProps) {
 
 // Pre-built menu items factory for entries
 export function useEntryContextMenu() {
+  const { t } = useTranslation();
   return {
     buildItems: (callbacks: {
       onCopyUsername?: () => void;
@@ -95,7 +97,7 @@ export function useEntryContextMenu() {
       const items: ContextMenuItem[] = [];
       if (callbacks.onCopyUsername) {
         items.push({
-          label: "Copy Username",
+          label: t("context.copy_username"),
           icon: User,
           shortcut: "⇧⌘U",
           action: callbacks.onCopyUsername,
@@ -103,7 +105,7 @@ export function useEntryContextMenu() {
       }
       if (callbacks.onCopyPassword) {
         items.push({
-          label: "Copy Password",
+          label: t("context.copy_password"),
           icon: Copy,
           shortcut: "⇧⌘C",
           action: callbacks.onCopyPassword,
@@ -111,7 +113,7 @@ export function useEntryContextMenu() {
       }
       if (callbacks.onCopyUrl) {
         items.push({
-          label: "Copy URL",
+          label: t("context.copy_url"),
           icon: Link,
           action: callbacks.onCopyUrl,
         });
@@ -121,7 +123,7 @@ export function useEntryContextMenu() {
       }
       if (callbacks.onEdit) {
         items.push({
-          label: "Edit",
+          label: t("context.edit"),
           icon: Pencil,
           shortcut: "⌘E",
           action: callbacks.onEdit,
@@ -129,7 +131,7 @@ export function useEntryContextMenu() {
       }
       if (callbacks.onTrash) {
         items.push({
-          label: "Move to Trash",
+          label: t("context.move_to_trash"),
           icon: Trash2,
           shortcut: "⌘⌫",
           danger: true,

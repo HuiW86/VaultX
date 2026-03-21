@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, type InputHTMLAttributes } from "react";
 import { Eye, EyeOff, Copy, Check } from "lucide-react";
 import { api } from "../../lib/commands";
+import { useTranslation } from "../../i18n";
 
 interface PasswordFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> {
   value: string;
@@ -23,6 +24,7 @@ export function PasswordField({
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const autoMaskTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { t } = useTranslation();
 
   const toggleReveal = useCallback(() => {
     const next = !revealed;
@@ -69,7 +71,7 @@ export function PasswordField({
             type="button"
             onClick={toggleReveal}
             className="p-1.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded transition-colors"
-            aria-label={revealed ? "Hide password" : "Show password"}
+            aria-label={revealed ? t("password.hide") : t("password.show")}
           >
             {revealed ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
@@ -78,7 +80,7 @@ export function PasswordField({
               type="button"
               onClick={handleCopy}
               className="p-1.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] rounded transition-colors"
-              aria-label="Copy password"
+              aria-label={t("password.copy")}
             >
               {copied ? (
                 <Check size={16} className="text-[var(--color-success)]" />

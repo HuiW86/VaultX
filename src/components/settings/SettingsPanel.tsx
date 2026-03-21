@@ -2,30 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { api, type VaultxSettings } from "../../lib/commands";
-
-const autoLockOptions = [
-  { value: 1, label: "1 minute" },
-  { value: 5, label: "5 minutes" },
-  { value: 15, label: "15 minutes" },
-  { value: 60, label: "1 hour" },
-  { value: 240, label: "4 hours" },
-  { value: 480, label: "8 hours" },
-  { value: -1, label: "Never" },
-];
-
-const clipboardOptions = [
-  { value: 15, label: "15 seconds" },
-  { value: 30, label: "30 seconds" },
-  { value: 60, label: "1 minute" },
-  { value: 120, label: "2 minutes" },
-  { value: -1, label: "Never" },
-];
-
-const themeOptions = [
-  { value: "dark", label: "Dark" },
-  { value: "light", label: "Light" },
-  { value: "system", label: "System" },
-];
+import { useTranslation } from "../../i18n";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -38,6 +15,31 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const update = useSettingsStore((s) => s.update);
   const [touchIdAvailable, setTouchIdAvailable] = useState(false);
   const [touchIdLoading, setTouchIdLoading] = useState(false);
+  const { t } = useTranslation();
+
+  const autoLockOptions = [
+    { value: 1, label: t("settings.1_minute") },
+    { value: 5, label: t("settings.5_minutes") },
+    { value: 15, label: t("settings.15_minutes") },
+    { value: 60, label: t("settings.1_hour") },
+    { value: 240, label: t("settings.4_hours") },
+    { value: 480, label: t("settings.8_hours") },
+    { value: -1, label: t("settings.never") },
+  ];
+
+  const clipboardOptions = [
+    { value: 15, label: t("settings.15_seconds") },
+    { value: 30, label: t("settings.30_seconds") },
+    { value: 60, label: t("settings.1_minute") },
+    { value: 120, label: t("settings.2_minutes") },
+    { value: -1, label: t("settings.never") },
+  ];
+
+  const themeOptions = [
+    { value: "dark", label: t("settings.dark") },
+    { value: "light", label: t("settings.light") },
+    { value: "system", label: t("settings.system") },
+  ];
 
   useEffect(() => {
     if (!loaded) load();
@@ -64,7 +66,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-[var(--spacing-lg)] py-[var(--spacing-md)] border-b border-[var(--color-border)]">
         <h2 className="text-[var(--font-size-lg)] font-[var(--font-weight-semibold)] text-[var(--color-text-primary)]">
-          Settings
+          {t("settings.title")}
         </h2>
         <button
           onClick={onClose}
@@ -77,40 +79,40 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       {/* Content */}
       <div className="flex-1 px-[var(--spacing-lg)] py-[var(--spacing-md)] space-y-[var(--spacing-lg)]">
         {/* General */}
-        <Section title="General">
+        <Section title={t("settings.general")}>
           <SwitchRow
-            label="Start at login"
+            label={t("settings.start_at_login")}
             checked={settings.start_at_login}
             onChange={(v) => handleChange("start_at_login", v)}
           />
           <SwitchRow
-            label="Show in menu bar"
+            label={t("settings.show_in_menu_bar")}
             checked={settings.show_in_menu_bar}
             onChange={(v) => handleChange("show_in_menu_bar", v)}
           />
         </Section>
 
         {/* Security */}
-        <Section title="Security">
+        <Section title={t("settings.security")}>
           <SelectRow
-            label="Auto-lock after"
+            label={t("settings.auto_lock")}
             value={settings.auto_lock_timeout_minutes}
             options={autoLockOptions}
             onChange={(v) => handleChange("auto_lock_timeout_minutes", v)}
           />
           <SwitchRow
-            label="Lock on sleep"
+            label={t("settings.lock_on_sleep")}
             checked={settings.lock_on_sleep}
             onChange={(v) => handleChange("lock_on_sleep", v)}
           />
           <SelectRow
-            label="Clear clipboard after"
+            label={t("settings.clipboard_clear")}
             value={settings.clipboard_clear_seconds}
             options={clipboardOptions}
             onChange={(v) => handleChange("clipboard_clear_seconds", v)}
           />
           <SwitchRow
-            label="Touch ID"
+            label={t("settings.touch_id")}
             checked={settings.touch_id_enabled}
             onChange={async (v) => {
               if (touchIdLoading) return;
@@ -133,33 +135,44 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </Section>
 
         {/* Appearance */}
-        <Section title="Appearance">
+        <Section title={t("settings.appearance")}>
           <SelectRow
-            label="Theme"
+            label={t("settings.theme")}
             value={settings.theme}
             options={themeOptions}
             onChange={(v) => handleChange("theme", v)}
           />
+          <div className="flex items-center justify-between">
+            <span>{t("settings.language")}</span>
+            <select
+              className="bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] text-[var(--font-size-sm)] px-[var(--spacing-sm)] py-[var(--spacing-xs)] rounded-[var(--radius-md)] border border-[var(--color-border)] cursor-pointer outline-none"
+              value={settings.language}
+              onChange={(e) => update({ language: e.target.value })}
+            >
+              <option value="en">{t("settings.lang_en")}</option>
+              <option value="zh-CN">{t("settings.lang_zh")}</option>
+            </select>
+          </div>
         </Section>
 
         {/* Shortcuts (read-only) */}
-        <Section title="Shortcuts">
-          <ShortcutRow label="Quick Access" shortcut="Cmd+Shift+Space" />
-          <ShortcutRow label="Lock" shortcut="Cmd+L" />
-          <ShortcutRow label="Search" shortcut="Cmd+K" />
-          <ShortcutRow label="New Item" shortcut="Cmd+N" />
+        <Section title={t("settings.shortcuts")}>
+          <ShortcutRow label={t("settings.quick_access")} shortcut="Cmd+Shift+Space" />
+          <ShortcutRow label={t("settings.lock")} shortcut="Cmd+L" />
+          <ShortcutRow label={t("settings.search")} shortcut="Cmd+K" />
+          <ShortcutRow label={t("settings.new_item")} shortcut="Cmd+N" />
         </Section>
 
         {/* Data (placeholders for future) */}
-        <Section title="Data">
-          <ActionRow label="Import..." disabled />
-          <ActionRow label="Export..." disabled />
+        <Section title={t("settings.data")}>
+          <ActionRow label={t("settings.import")} disabled />
+          <ActionRow label={t("settings.export")} disabled />
         </Section>
 
         {/* About */}
-        <Section title="About">
+        <Section title={t("settings.about")}>
           <div className="h-10 flex items-center text-[var(--font-size-md)] text-[var(--color-text-secondary)]">
-            VaultX v0.1.0
+            {t("settings.version")}
           </div>
         </Section>
       </div>

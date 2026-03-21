@@ -9,6 +9,7 @@ import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { useVaultStore } from "../../stores/vaultStore";
 import { api, type EntryDetailResponse, type FieldInputDto } from "../../lib/commands";
+import { useTranslation } from "../../i18n";
 
 // Category templates — PS:§2.4
 const categoryTemplates: Record<string, { field_type: string; label: string }[]> = {
@@ -56,6 +57,7 @@ interface EntryFormProps {
 }
 
 export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: EntryFormProps) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState(existingEntry?.entry.title || "");
   const [fields, setFields] = useState<{ field_type: string; label: string; value: string }[]>([]);
   const [titleError, setTitleError] = useState("");
@@ -101,7 +103,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
     async (e?: FormEvent) => {
       e?.preventDefault();
       if (!title.trim()) {
-        setTitleError("Title is required");
+        setTitleError(t("form.title_required"));
         return;
       }
       setLoading(true);
@@ -126,7 +128,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
         if (mode === "new") {
           // Need vault ID — get first vault
           const vaults = await api.listVaults();
-          if (vaults.length === 0) throw new Error("No vault found");
+          if (vaults.length === 0) throw new Error(t("form.no_vault"));
           const result = await createEntry({
             vault_id: vaults[0].id,
             category,
@@ -134,7 +136,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
             subtitle,
             fields: fieldInputs,
           });
-          toast("Saved", "success");
+          toast(t("form.saved"), "success");
           onSave(result.id);
         } else if (existingEntry) {
           await updateEntry({
@@ -143,7 +145,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
             subtitle,
             fields: fieldInputs,
           });
-          toast("Saved", "success");
+          toast(t("form.saved"), "success");
           onSave(existingEntry.entry.id);
         }
       } catch (e) {
@@ -182,12 +184,12 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       {/* Header */}
       <div className="flex items-center justify-between mb-[var(--spacing-xl)]">
         <h2 className="text-[var(--font-size-h2)] font-[var(--font-weight-semibold)]">
-          {mode === "new" ? `New ${categoryMeta.find((c) => c.id === category)?.label}` : "Edit"}
+          {mode === "new" ? t("form.new", { category: categoryMeta.find((c) => c.id === category)?.label ?? category }) : t("form.edit")}
         </h2>
         <div className="flex gap-[var(--spacing-sm)]">
-          <Button variant="ghost" onClick={handleCancel}>Cancel</Button>
+          <Button variant="ghost" onClick={handleCancel}>{t("form.cancel")}</Button>
           <Button variant="primary" onClick={() => handleSubmit()} loading={loading}>
-            Save
+            {t("form.save")}
           </Button>
         </div>
       </div>
@@ -222,7 +224,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       {/* Form */}
       <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--spacing-lg)]">
         <Input
-          label="Title"
+          label={t("form.title")}
           required
           value={title}
           onChange={(e) => {
@@ -231,7 +233,7 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
             setDirty(true);
           }}
           onBlur={() => {
-            if (!title.trim()) setTitleError("Title is required");
+            if (!title.trim()) setTitleError(t("form.title_required"));
           }}
           error={titleError}
           autoFocus
@@ -294,16 +296,16 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
       <Modal
         open={showDiscardModal}
         onClose={() => setShowDiscardModal(false)}
-        title="Discard changes?"
+        title={t("form.discard_title")}
         danger
-        confirmLabel="Discard"
-        cancelLabel="Keep Editing"
+        confirmLabel={t("form.discard")}
+        cancelLabel={t("form.keep_editing")}
         onConfirm={() => {
           setShowDiscardModal(false);
           onCancel();
         }}
       >
-        <p>You have unsaved changes that will be lost.</p>
+        <p>{t("form.discard_desc")}</p>
       </Modal>
     </div>
   );

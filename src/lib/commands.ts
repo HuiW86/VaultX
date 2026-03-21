@@ -80,6 +80,7 @@ export interface VaultxSettings {
   theme: string;
   start_at_login: boolean;
   show_in_menu_bar: boolean;
+  language: string;
 }
 
 // -- API calls --

@@ -17,6 +17,7 @@ const defaults: VaultxSettings = {
   theme: "dark",
   start_at_login: false,
   show_in_menu_bar: false,
+  language: "en",
 };
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({

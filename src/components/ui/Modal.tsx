@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { Button } from "./Button";
+import { useTranslation } from "../../i18n";
 
 interface ModalProps {
   open: boolean;
@@ -21,12 +22,15 @@ export function Modal({
   title,
   children,
   danger = false,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   loading,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
+  const resolvedConfirmLabel = confirmLabel ?? t("modal.confirm");
+  const resolvedCancelLabel = cancelLabel ?? t("modal.cancel");
 
   // Trap focus and handle Escape
   useEffect(() => {
@@ -78,7 +82,7 @@ export function Modal({
               <button
                 onClick={onClose}
                 className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded"
-                aria-label="Close"
+                aria-label={t("modal.close")}
               >
                 <X size={18} />
               </button>
@@ -91,14 +95,14 @@ export function Modal({
             {onConfirm && (
               <div className="flex justify-end gap-[var(--spacing-sm)]">
                 <Button variant="ghost" onClick={onClose}>
-                  {cancelLabel}
+                  {resolvedCancelLabel}
                 </Button>
                 <Button
                   variant={danger ? "danger" : "primary"}
                   onClick={onConfirm}
                   loading={loading}
                 >
-                  {confirmLabel}
+                  {resolvedConfirmLabel}
                 </Button>
               </div>
             )}

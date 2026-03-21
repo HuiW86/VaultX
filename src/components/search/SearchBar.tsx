@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { Search, X } from "lucide-react";
 import { useSearchStore } from "../../stores/searchStore";
+import { useTranslation } from "../../i18n";
 
 interface SearchBarProps {
   inputRef?: React.RefObject<HTMLInputElement | null>;
@@ -12,6 +13,7 @@ export function SearchBar({ inputRef: externalRef }: SearchBarProps) {
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
   const clear = useSearchStore((s) => s.clear);
+  const { t } = useTranslation();
 
   // Focus on Cmd+K (handled by parent, ref passed down)
   useEffect(() => {
@@ -39,15 +41,15 @@ export function SearchBar({ inputRef: externalRef }: SearchBarProps) {
               (ref as React.RefObject<HTMLInputElement>).current?.blur();
             }
           }}
-          placeholder="Search... (⌘K)"
-          aria-label="Search entries"
+          placeholder={t("search.placeholder")}
+          aria-label={t("search.aria_label")}
           className="w-full h-8 pl-8 pr-8 bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-sm)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)] transition-colors duration-[var(--duration-fast)]"
         />
         {query && (
           <button
             onClick={clear}
             className="absolute right-[var(--spacing-xs)] top-1/2 -translate-y-1/2 p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded"
-            aria-label="Clear search"
+            aria-label={t("search.clear")}
           >
             <X size={14} />
           </button>

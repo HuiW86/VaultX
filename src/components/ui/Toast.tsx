@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Check, AlertCircle, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "../../i18n";
 
 interface ToastItem {
   id: number;
@@ -14,6 +15,7 @@ let nextId = 0;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const { t } = useTranslation();
 
   const addToast = useCallback(
     (message: string, type: ToastItem["type"] = "info", countdown?: number) => {
@@ -21,7 +23,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setToasts((prev) => [...prev, { id, message, type, countdown }]);
       const duration = type === "error" ? 4000 : 2000;
       setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
       }, duration);
     },
     []
@@ -30,10 +32,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unlistenCopied = listen<number>("clipboard:copied", (event) => {
       const ms = event.payload;
-      addToast(`Copied, clearing in ${Math.round(ms / 1000)}s`, "success", ms);
+      addToast(t("toast.copied_clearing", { seconds: Math.round(ms / 1000) }), "success", ms);
     });
     const unlistenCleared = listen("clipboard:cleared", () => {
-      addToast("Clipboard cleared", "info");
+      addToast(t("toast.clipboard_cleared"), "info");
     });
 
     // Expose addToast globally for imperative use

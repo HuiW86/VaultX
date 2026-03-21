@@ -18,6 +18,12 @@ pub struct VaultxSettings {
     pub theme: String, // "dark" | "light" | "system"
     pub start_at_login: bool,
     pub show_in_menu_bar: bool,
+    #[serde(default = "default_language")]
+    pub language: String, // "en" | "zh-CN"
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for VaultxSettings {
@@ -30,6 +36,7 @@ impl Default for VaultxSettings {
             theme: "dark".to_string(),
             start_at_login: false,
             show_in_menu_bar: false,
+            language: "en".to_string(),
         }
     }
 }

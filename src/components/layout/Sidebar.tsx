@@ -13,21 +13,24 @@ import {
 } from "lucide-react";
 import { useVaultStore } from "../../stores/vaultStore";
 import { useAppStore } from "../../stores/appStore";
+import { useTranslation } from "../../i18n";
 
 interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
-const categories = [
-  { id: null, label: "All Items", icon: LayoutGrid },
-  { id: "login", label: "Logins", icon: Key },
-  { id: "card", label: "Cards", icon: CreditCard },
-  { id: "note", label: "Notes", icon: FileText },
-  { id: "identity", label: "Identities", icon: User },
-  { id: "ssh_key", label: "SSH Keys", icon: Terminal },
-] as const;
-
 export function Sidebar({ onOpenSettings }: SidebarProps) {
+  const { t } = useTranslation();
+
+  const categories = [
+    { id: null, label: t("sidebar.all_items"), icon: LayoutGrid },
+    { id: "login", label: t("sidebar.logins"), icon: Key },
+    { id: "card", label: t("sidebar.cards"), icon: CreditCard },
+    { id: "note", label: t("sidebar.notes"), icon: FileText },
+    { id: "identity", label: t("sidebar.identities"), icon: User },
+    { id: "ssh_key", label: t("sidebar.ssh_keys"), icon: Terminal },
+  ] as const;
+
   const categoryFilter = useVaultStore((s) => s.categoryFilter);
   const showTrash = useVaultStore((s) => s.showTrash);
   const setCategoryFilter = useVaultStore((s) => s.setCategoryFilter);
@@ -47,17 +50,17 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       {/* Vaults section */}
       <div className="mb-[var(--spacing-lg)]">
         <h3 className="text-[var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-text-tertiary)] uppercase px-[var(--spacing-sm)] mb-[var(--spacing-xs)]">
-          Vaults
+          {t("sidebar.vaults")}
         </h3>
         <div className="px-[var(--spacing-sm)] py-[var(--spacing-xs)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)]">
-          Personal
+          {t("sidebar.personal")}
         </div>
       </div>
 
       {/* Categories */}
       <div className="flex-1">
         <h3 className="text-[var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-text-tertiary)] uppercase px-[var(--spacing-sm)] mb-[var(--spacing-xs)]">
-          Categories
+          {t("sidebar.categories")}
         </h3>
         <div className="flex flex-col gap-px">
           {categories.map(({ id, label, icon: Icon }) => {
@@ -96,7 +99,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
             className="flex items-center gap-[var(--spacing-sm)] px-[var(--spacing-sm)] py-[5px] rounded-[var(--radius-md)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
           >
             <Star size={16} />
-            <span>Favorites</span>
+            <span>{t("sidebar.favorites")}</span>
           </button>
           <button
             onClick={() => setShowTrash(true)}
@@ -107,7 +110,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
             }`}
           >
             <Trash2 size={16} />
-            <span>Trash</span>
+            <span>{t("sidebar.trash")}</span>
           </button>
         </div>
       </div>
@@ -119,14 +122,14 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
           className="flex items-center gap-[var(--spacing-sm)] px-[var(--spacing-sm)] py-[5px] rounded-[var(--radius-md)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
         >
           <Settings size={16} />
-          <span>Settings</span>
+          <span>{t("sidebar.settings")}</span>
         </button>
         <button
           onClick={lock}
           className="flex items-center gap-[var(--spacing-sm)] px-[var(--spacing-sm)] py-[5px] rounded-[var(--radius-md)] text-[var(--font-size-md)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
         >
           <Lock size={16} />
-          <span>Lock</span>
+          <span>{t("sidebar.lock")}</span>
           <span className="ml-auto text-[var(--font-size-xs)] text-[var(--color-text-tertiary)]">
             ⌘L
           </span>

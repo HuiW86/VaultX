@@ -6,6 +6,7 @@ import { PasswordField } from "../ui/PasswordField";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { useVaultStore } from "../../stores/vaultStore";
+import { useTranslation } from "../../i18n";
 
 const categoryIcons: Record<string, React.ComponentType<{ size: number }>> = {
   login: Key, card: CreditCard, note: FileText, identity: User, ssh_key: Terminal,
@@ -17,6 +18,7 @@ interface EntryDetailProps {
 }
 
 export function EntryDetail({ entry, onEdit }: EntryDetailProps) {
+  const { t } = useTranslation();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const trashEntry = useVaultStore((s) => s.trashEntry);
   const isTrashed = entry.entry.trashed;
@@ -76,11 +78,11 @@ export function EntryDetail({ entry, onEdit }: EntryDetailProps) {
                 </span>
                 {field.value && (
                   <div className="flex items-center gap-0.5">
-                    <CopyButton value={field.value} label={`Copy ${field.label}`} />
+                    <CopyButton value={field.value} label={t("detail.copy_field", { label: field.label })} />
                     {field.field_type === "url" && field.value && (
                       <button
                         className="p-1.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] rounded transition-colors"
-                        aria-label="Open URL"
+                        aria-label={t("detail.open_url")}
                       >
                         <ExternalLink size={16} />
                       </button>
@@ -96,8 +98,8 @@ export function EntryDetail({ entry, onEdit }: EntryDetailProps) {
       {/* Metadata */}
       <div className="border-t border-[var(--color-border-light)] pt-[var(--spacing-lg)] mb-[var(--spacing-xl)]">
         <div className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] flex flex-col gap-1">
-          <span>Created: {new Date(entry.entry.created_at).toLocaleDateString()}</span>
-          <span>Modified: {new Date(entry.entry.updated_at).toLocaleDateString()}</span>
+          <span>{t("detail.created", { date: new Date(entry.entry.created_at).toLocaleDateString() })}</span>
+          <span>{t("detail.modified", { date: new Date(entry.entry.updated_at).toLocaleDateString() })}</span>
         </div>
       </div>
 
@@ -106,11 +108,11 @@ export function EntryDetail({ entry, onEdit }: EntryDetailProps) {
         <div className="flex gap-[var(--spacing-sm)]">
           <Button variant="secondary" onClick={onEdit}>
             <Pencil size={14} />
-            Edit
+            {t("detail.edit")}
           </Button>
           <Button variant="ghost" onClick={() => setShowDeleteModal(true)}>
             <Trash2 size={14} />
-            Move to Trash
+            {t("detail.move_to_trash")}
           </Button>
         </div>
       )}
@@ -118,13 +120,13 @@ export function EntryDetail({ entry, onEdit }: EntryDetailProps) {
       <Modal
         open={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        title="Move to Trash?"
+        title={t("detail.trash_confirm_title")}
         danger
-        confirmLabel="Move to Trash"
-        cancelLabel="Keep"
+        confirmLabel={t("detail.move_to_trash")}
+        cancelLabel={t("detail.keep")}
         onConfirm={handleDelete}
       >
-        <p>"{entry.entry.title}" will be moved to Trash.</p>
+        <p>{t("detail.trash_confirm_desc", { title: entry.entry.title })}</p>
       </Modal>
     </div>
   );

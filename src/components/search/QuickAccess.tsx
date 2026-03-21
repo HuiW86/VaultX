@@ -8,6 +8,7 @@ import type { EntrySummary } from "../../lib/commands";
 import { EntryCard } from "../entry/EntryCard";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
+import { useTranslation } from "../../i18n";
 
 type QAStatus = "loading" | "locked" | "unlocked";
 
@@ -21,6 +22,7 @@ export function QuickAccess() {
   const [unlockLoading, setUnlockLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { t } = useTranslation();
 
   // Check vault status on mount and when window becomes visible
   const checkStatus = useCallback(async () => {
@@ -136,7 +138,7 @@ export function QuickAccess() {
       setResults(recent);
       setTimeout(() => inputRef.current?.focus(), 50);
     } catch (e: any) {
-      setUnlockError(typeof e === "string" ? e : "Incorrect password");
+      setUnlockError(typeof e === "string" ? e : t("quick.incorrect_password"));
     } finally {
       setUnlockLoading(false);
     }
@@ -155,7 +157,7 @@ export function QuickAccess() {
         <div className="flex flex-col items-center justify-center h-full p-[var(--spacing-xl)]">
           <Lock size={32} className="text-[var(--color-primary)] mb-[var(--spacing-lg)]" />
           <p className="text-[var(--font-size-md)] text-[var(--color-text-secondary)] mb-[var(--spacing-lg)]">
-            Vault is locked
+            {t("quick.vault_locked")}
           </p>
           <form
             onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
@@ -165,7 +167,7 @@ export function QuickAccess() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Master password"
+              placeholder={t("quick.master_password")}
               autoFocus
               className="h-9 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
             />
@@ -175,7 +177,7 @@ export function QuickAccess() {
               </p>
             )}
             <Button type="submit" variant="primary" size="md" loading={unlockLoading} className="w-full">
-              Unlock
+              {t("quick.unlock")}
             </Button>
           </form>
         </div>
@@ -190,10 +192,10 @@ export function QuickAccess() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Quick Access..."
+              placeholder={t("quick.placeholder")}
               autoFocus
               className="flex-1 bg-transparent text-[var(--font-size-lg)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none"
-              aria-label="Quick Access search"
+              aria-label={t("quick.aria_label")}
             />
           </div>
 
@@ -202,14 +204,14 @@ export function QuickAccess() {
             {!query && results.length > 0 && (
               <div className="px-[var(--spacing-lg)] py-[var(--spacing-xs)]">
                 <span className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)]">
-                  Recently used
+                  {t("quick.recently_used")}
                 </span>
               </div>
             )}
             {results.length === 0 ? (
               <EmptyState
-                title={query ? "No matching items" : "No recent items"}
-                description={query ? "Try a different search" : undefined}
+                title={query ? t("quick.no_matching") : t("quick.no_recent")}
+                description={query ? t("quick.try_different") : undefined}
               />
             ) : (
               results.map((entry, index) => (
@@ -226,10 +228,10 @@ export function QuickAccess() {
 
           {/* Keyboard hints */}
           <div className="flex items-center justify-center gap-[var(--spacing-lg)] px-[var(--spacing-lg)] py-[var(--spacing-xs)] border-t border-[var(--color-border-light)] text-[var(--font-size-xs)] text-[var(--color-text-tertiary)]">
-            <span>↑↓ Navigate</span>
-            <span>↵ Copy password</span>
-            <span>⇧↵ Copy username</span>
-            <span>esc Close</span>
+            <span>{t("quick.nav_navigate")}</span>
+            <span>{t("quick.nav_copy_password")}</span>
+            <span>{t("quick.nav_copy_username")}</span>
+            <span>{t("quick.nav_close")}</span>
           </div>
         </>
       )}

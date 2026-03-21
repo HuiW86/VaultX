@@ -4,8 +4,10 @@ import { Fingerprint, Lock } from "lucide-react";
 import { Button } from "../ui/Button";
 import { useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
+import { useTranslation } from "../../i18n";
 
 export function LockScreen() {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
@@ -18,7 +20,7 @@ export function LockScreen() {
   const [confirmNew, setConfirmNew] = useState("");
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
-  const countdownRef = useRef<ReturnType<typeof setInterval>>();
+  const countdownRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const error = useAppStore((s) => s.error);
   const retryAfterMs = useAppStore((s) => s.retryAfterMs);
   const unlock = useAppStore((s) => s.unlock);
@@ -97,7 +99,7 @@ export function LockScreen() {
         />
         <h1 className="text-[var(--font-size-display)] font-[var(--font-weight-bold)] text-[var(--color-text-primary)] mb-[var(--spacing-3xl)]"
             style={{ fontFamily: "var(--font-display)" }}>
-          VaultX
+          {t("lock.title")}
         </h1>
 
         <motion.form
@@ -113,10 +115,10 @@ export function LockScreen() {
               setPassword(e.target.value);
               if (error) clearError();
             }}
-            placeholder="Master password"
+            placeholder={t("lock.master_password_placeholder")}
             autoFocus
             className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
-            aria-label="Master password"
+            aria-label={t("lock.master_password_placeholder")}
           />
 
           {error && (
@@ -127,7 +129,7 @@ export function LockScreen() {
 
           {countdown > 0 && (
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] text-center">
-              Try again in {countdown}s
+              {t("lock.try_again_in", { countdown })}
             </p>
           )}
 
@@ -139,7 +141,7 @@ export function LockScreen() {
             disabled={countdown > 0}
             className="w-full"
           >
-            {countdown > 0 ? `Wait ${countdown}s` : "Unlock"}
+            {countdown > 0 ? t("lock.wait", { countdown }) : t("lock.unlock")}
           </Button>
         </motion.form>
 
@@ -151,7 +153,7 @@ export function LockScreen() {
           >
             <Fingerprint size={20} />
             <span className="text-[var(--font-size-sm)]">
-              {biometricLoading ? "Authenticating..." : "Use Touch ID"}
+              {biometricLoading ? t("lock.authenticating") : t("lock.use_touch_id")}
             </span>
           </button>
         )}
@@ -160,19 +162,19 @@ export function LockScreen() {
           onClick={() => setShowRecovery(!showRecovery)}
           className="mt-[var(--spacing-lg)] text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] cursor-pointer"
         >
-          Forgot password?
+          {t("lock.forgot_password")}
         </button>
 
         {showRecovery && (
           <div className="mt-[var(--spacing-md)] w-full flex flex-col gap-[var(--spacing-md)] p-[var(--spacing-md)] border border-[var(--color-border)] rounded-[var(--radius-lg)] bg-[var(--color-bg-elevated)]">
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-secondary)]">
-              Enter your recovery key and set a new master password.
+              {t("lock.recovery_desc")}
             </p>
             <input
               type="text"
               value={recoveryKey}
               onChange={(e) => { setRecoveryKey(e.target.value); setRecoveryError(""); }}
-              placeholder="Recovery key (e.g. ABCD-EFGH-...)"
+              placeholder={t("lock.recovery_key_placeholder")}
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-sm)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
               style={{ fontFamily: "var(--font-mono)" }}
             />
@@ -180,14 +182,14 @@ export function LockScreen() {
               type="password"
               value={newPassword}
               onChange={(e) => { setNewPassword(e.target.value); setRecoveryError(""); }}
-              placeholder="New master password"
+              placeholder={t("lock.new_password_placeholder")}
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
             />
             <input
               type="password"
               value={confirmNew}
               onChange={(e) => { setConfirmNew(e.target.value); setRecoveryError(""); }}
-              placeholder="Confirm new password"
+              placeholder={t("lock.confirm_new_placeholder")}
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
             />
             {recoveryError && (
@@ -198,22 +200,22 @@ export function LockScreen() {
               size="md"
               loading={recoveryLoading}
               onClick={async () => {
-                if (!recoveryKey.trim()) { setRecoveryError("Recovery key is required"); return; }
-                if (newPassword.length < 8) { setRecoveryError("Password must be at least 8 characters"); return; }
-                if (newPassword !== confirmNew) { setRecoveryError("Passwords don't match"); return; }
+                if (!recoveryKey.trim()) { setRecoveryError(t("lock.recovery_key_required")); return; }
+                if (newPassword.length < 8) { setRecoveryError(t("setup.password_min_length")); return; }
+                if (newPassword !== confirmNew) { setRecoveryError(t("setup.passwords_mismatch")); return; }
                 setRecoveryLoading(true);
                 try {
                   await api.recoverWithKey(recoveryKey.trim(), newPassword);
                   useAppStore.setState({ status: "unlocked", error: null });
                 } catch (e) {
-                  setRecoveryError(typeof e === "string" ? e : "Recovery failed. Check your recovery key.");
+                  setRecoveryError(typeof e === "string" ? e : t("lock.recovery_failed"));
                 } finally {
                   setRecoveryLoading(false);
                 }
               }}
               className="w-full"
             >
-              Reset Password
+              {t("lock.reset_password")}
             </Button>
           </div>
         )}

@@ -4,10 +4,12 @@ import { Button } from "../ui/Button";
 import { StrengthMeter } from "../ui/StrengthMeter";
 import { useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
+import { useTranslation } from "../../i18n";
 
 type Step = "password" | "recovery" | "done";
 
 export function SetupWizard() {
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>("password");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -21,8 +23,8 @@ export function SetupWizard() {
 
   const validate = useCallback(() => {
     const errs: typeof errors = {};
-    if (password.length < 8) errs.password = "Password must be at least 8 characters";
-    if (password !== confirm) errs.confirm = "Passwords don't match";
+    if (password.length < 8) errs.password = t("setup.password_min_length");
+    if (password !== confirm) errs.confirm = t("setup.passwords_mismatch");
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }, [password, confirm]);
@@ -68,17 +70,16 @@ export function SetupWizard() {
             className="text-[var(--color-warning)] mb-[var(--spacing-lg)]"
           />
           <h1 className="text-[var(--font-size-h1)] font-[var(--font-weight-bold)] text-[var(--color-text-primary)] mb-[var(--spacing-sm)]">
-            Save Your Recovery Kit
+            {t("setup.recovery_title")}
           </h1>
           <p className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] mb-[var(--spacing-xl)] text-center">
-            If you forget your master password, this is your only way back in.
-            Download and store it somewhere safe.
+            {t("setup.recovery_desc")}
           </p>
 
           {/* Recovery key display */}
           <div className="w-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-[var(--radius-lg)] p-[var(--spacing-lg)] mb-[var(--spacing-lg)]">
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] mb-[var(--spacing-sm)]">
-              Your Recovery Key
+              {t("setup.recovery_key_label")}
             </p>
             <p
               className="text-[var(--font-size-lg)] text-[var(--color-text-primary)] font-[var(--font-weight-semibold)] select-all text-center tracking-wider"
@@ -98,12 +99,12 @@ export function SetupWizard() {
               {downloaded ? (
                 <>
                   <Check size={16} />
-                  Downloaded — Download Again
+                  {t("setup.recovery_downloaded")}
                 </>
               ) : (
                 <>
                   <Download size={16} />
-                  Download Recovery Kit
+                  {t("setup.recovery_download")}
                 </>
               )}
             </Button>
@@ -115,13 +116,13 @@ export function SetupWizard() {
               onClick={() => setStep("done")}
               className="w-full"
             >
-              I've Saved My Recovery Kit
+              {t("setup.recovery_saved")}
             </Button>
           </div>
 
           {!downloaded && (
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] mt-[var(--spacing-md)] text-center">
-              You must download the recovery kit before continuing
+              {t("setup.recovery_must_download")}
             </p>
           )}
         </div>
@@ -139,10 +140,10 @@ export function SetupWizard() {
             className="text-[var(--color-success)] mb-[var(--spacing-lg)]"
           />
           <h1 className="text-[var(--font-size-h1)] font-[var(--font-weight-bold)] text-[var(--color-text-primary)] mb-[var(--spacing-sm)]">
-            You're All Set
+            {t("setup.all_set")}
           </h1>
           <p className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] mb-[var(--spacing-xl)] text-center">
-            Your vault is ready. Start adding your passwords.
+            {t("setup.all_set_desc")}
           </p>
           <Button
             variant="primary"
@@ -150,7 +151,7 @@ export function SetupWizard() {
             onClick={() => useAppStore.setState({ status: "unlocked" })}
             className="w-full"
           >
-            Get Started
+            {t("setup.get_started")}
           </Button>
         </div>
       </div>
@@ -169,18 +170,16 @@ export function SetupWizard() {
           className="text-[var(--font-size-display)] font-[var(--font-weight-bold)] text-[var(--color-text-primary)] mb-[var(--spacing-sm)]"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          Welcome to VaultX
+          {t("setup.welcome")}
         </h1>
         <p className="text-[var(--font-size-sm)] text-[var(--color-text-secondary)] mb-[var(--spacing-3xl)] text-center">
-          Create a master password to protect your vault.
-          <br />
-          Choose something strong — this is your only key.
+          {t("setup.welcome_desc")}
         </p>
 
         <form onSubmit={handleCreateVault} className="w-full flex flex-col gap-[var(--spacing-lg)]">
           <div className="flex flex-col gap-[var(--spacing-xs)]">
             <label className="text-[var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-text-secondary)]">
-              Master Password
+              {t("setup.master_password")}
             </label>
             <input
               type="password"
@@ -188,7 +187,7 @@ export function SetupWizard() {
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
-              aria-label="Master password"
+              aria-label={t("setup.master_password")}
             />
             <StrengthMeter password={password} />
             {errors.password && (
@@ -200,14 +199,14 @@ export function SetupWizard() {
 
           <div className="flex flex-col gap-[var(--spacing-xs)]">
             <label className="text-[var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-text-secondary)]">
-              Confirm Password
+              {t("setup.confirm_password")}
             </label>
             <input
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
-              aria-label="Confirm master password"
+              aria-label={t("setup.confirm_password")}
             />
             {errors.confirm && (
               <p className="text-[var(--font-size-xs)] text-[var(--color-error)]">
@@ -223,7 +222,7 @@ export function SetupWizard() {
           )}
 
           <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
-            {loading ? "Creating vault..." : "Create Vault"}
+            {loading ? t("setup.creating") : t("setup.create_vault")}
           </Button>
         </form>
       </div>

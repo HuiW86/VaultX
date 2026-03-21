@@ -4,10 +4,12 @@ import { EntryDetail } from "../entry/EntryDetail";
 import { EntryForm } from "../entry/EntryForm";
 import { DetailSkeleton } from "../ui/Skeleton";
 import { ErrorState } from "../ui/ErrorState";
+import { useTranslation } from "../../i18n";
 
 export type DetailMode = "view" | "edit" | "new";
 
 export function DetailPanel() {
+  const { t } = useTranslation();
   const selectedEntryId = useVaultStore((s) => s.selectedEntryId);
   const selectedEntry = useVaultStore((s) => s.selectedEntry);
   const error = useVaultStore((s) => s.error);
@@ -78,7 +80,7 @@ export function DetailPanel() {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-[var(--font-size-sm)] text-[var(--color-text-tertiary)]">
-          Select an item to view details
+          {t("detail.select_item")}
         </p>
       </div>
     );
