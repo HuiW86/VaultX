@@ -205,6 +205,9 @@ const zhCN: Translations = {
   "settings.export": "导出...",
   "settings.about": "关于",
   "settings.version": "VaultX v0.1.0",
+  "settings.author": "作者：Eric Wang",
+  "settings.github": "GitHub",
+  "settings.skillnav": "SkillNav.dev — 开发者 AI 智能体工具导航",
 
   // Toast
   "toast.copied_clearing": "已复制，{seconds}秒后清除",

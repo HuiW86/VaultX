@@ -203,6 +203,9 @@ const en = {
   "settings.export": "Export...",
   "settings.about": "About",
   "settings.version": "VaultX v0.1.0",
+  "settings.author": "By Eric Wang",
+  "settings.github": "GitHub",
+  "settings.skillnav": "SkillNav.dev — AI Agent tool navigation for developers",
 
   // Toast
   "toast.copied_clearing": "Copied, clearing in {seconds}s",

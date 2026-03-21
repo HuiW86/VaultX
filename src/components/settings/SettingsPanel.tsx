@@ -174,6 +174,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <div className="h-10 flex items-center text-[var(--font-size-md)] text-[var(--color-text-secondary)]">
             {t("settings.version")}
           </div>
+          <div className="h-10 flex items-center text-[var(--font-size-md)] text-[var(--color-text-secondary)]">
+            {t("settings.author")}
+          </div>
+          <a
+            href="https://github.com/wh759705-creator/VaultX"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 flex items-center text-[var(--font-size-md)] text-[var(--color-primary)] hover:underline"
+          >
+            {t("settings.github")}
+          </a>
+          <a
+            href="https://skillnav.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 flex items-center text-[var(--font-size-md)] text-[var(--color-primary)] hover:underline"
+          >
+            {t("settings.skillnav")}
+          </a>
         </Section>
       </div>
     </div>

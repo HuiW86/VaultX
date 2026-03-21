@@ -86,9 +86,11 @@ src/
 
 ## Author / 作者
 
-Built by [@wh759705-creator](https://github.com/wh759705-creator), creator of [SkillNav.dev](https://skillnav.dev) — a curated navigation platform for AI Agent tools, featuring 100+ quality Skills and 3900+ MCP tools for developers.
+**Eric Wang** — [GitHub](https://github.com/wh759705-creator) | WeChat: 759705
 
-由 [@wh759705-creator](https://github.com/wh759705-creator) 开发，同时也是 [SkillNav.dev](https://skillnav.dev) 的作者 — 一个面向开发者的 AI 智能体工具导航平台，精选 100+ 优质 Skills 和 3900+ MCP 工具。
+Creator of [SkillNav](https://skillnav.dev) — helping Chinese developers discover, evaluate, and use AI Agent tools. We track the AI agent ecosystem and provide structured tool navigation, daily curated news, and in-depth technical columns.
+
+[SkillNav](https://skillnav.dev) 帮助中文开发者发现、评估和使用 AI Agent 工具。我们持续追踪 AI 智能体生态，提供结构化的工具导航、每日精选资讯和深度技术专栏。
 
 ## License
 
