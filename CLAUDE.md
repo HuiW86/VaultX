@@ -74,6 +74,19 @@ Before generating UI code, check:
 4. Composition patterns: §6
 5. Shared vocabulary: `docs/product-spec.md` §0.2
 
+### i18n Pitfalls
+- Lock/auto-lock resets stores — `settingsStore.reset()` must preserve `language` (non-sensitive)
+- Never gate i18n locale on `settingsLoaded` — use `language` directly (has `?? "en"` fallback)
+- Static data outside components (templates, metadata) use i18n keys, translate at render via `t()`
+- DB stores translated label text — editing existing entries needs reverse lookup (`labelToKey` map)
+
+## Open Source
+
+- **GitHub**: https://github.com/wh759705-creator/VaultX
+- **License**: MIT
+- **Author**: Eric Wang (WeChat: 759705, [SkillNav.dev](https://skillnav.dev))
+- **Dev command**: `npx tauri dev` (not `npm run tauri dev`)
+
 ## Plans
 
 See `docs/plans/README.md` for implementation plans and progress.
