@@ -54,6 +54,7 @@ export function DetailPanel() {
   if (mode === "new" && newCategory) {
     return (
       <EntryForm
+        key={`new-${newCategory}`}
         mode="new"
         category={newCategory}
         onSave={handleSaved}

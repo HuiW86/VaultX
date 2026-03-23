@@ -18,7 +18,6 @@ function App() {
   const init = useAppStore((s) => s.init);
   const lock = useAppStore((s) => s.lock);
   const language = useSettingsStore((s) => s.settings?.language ?? "en") as Locale;
-  const settingsLoaded = useSettingsStore((s) => s.loaded);
   const loadSettings = useSettingsStore((s) => s.load);
   const searchInputRef = useRef<HTMLInputElement>(null);
 

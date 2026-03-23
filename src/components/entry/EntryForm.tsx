@@ -9,11 +9,11 @@ import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { useVaultStore } from "../../stores/vaultStore";
 import { api, type EntryDetailResponse, type FieldInputDto } from "../../lib/commands";
-import { useTranslation } from "../../i18n";
+import { useTranslation, type TranslationKey } from "../../i18n";
 
 // Category templates — PS:§2.4
 // Labels use i18n keys — translated at render time via t()
-const categoryTemplates: Record<string, { field_type: string; labelKey: string }[]> = {
+const categoryTemplates: Record<string, { field_type: string; labelKey: TranslationKey }[]> = {
   login: [
     { field_type: "username", labelKey: "form.username" },
     { field_type: "password", labelKey: "form.password" },
@@ -41,7 +41,7 @@ const categoryTemplates: Record<string, { field_type: string; labelKey: string }
   ],
 };
 
-const categoryMeta = [
+const categoryMeta: { id: string; labelKey: TranslationKey; icon: typeof Key; color: string }[] = [
   { id: "login", labelKey: "category.login", icon: Key, color: "var(--color-primary)" },
   { id: "card", labelKey: "category.card", icon: CreditCard, color: "var(--color-warning)" },
   { id: "note", labelKey: "category.note", icon: FileText, color: "var(--color-accent)" },
@@ -50,7 +50,7 @@ const categoryMeta = [
 ];
 
 // Reverse lookup: stored label text → i18n key (for editing existing entries)
-const labelToKey: Record<string, string> = {
+const labelToKey: Record<string, TranslationKey> = {
   // English labels
   "Username": "form.username", "Password": "form.password", "Website": "form.website",
   "Cardholder Name": "form.cardholder", "Card Number": "form.card_number", "Expiry": "form.expiry",
@@ -74,10 +74,11 @@ interface EntryFormProps {
   onCancel: () => void;
 }
 
-export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: EntryFormProps) {
+export function EntryForm({ mode, category: initialCategory, existingEntry, onSave, onCancel }: EntryFormProps) {
   const { t } = useTranslation();
+  const [category, setCategory] = useState(initialCategory);
   const [title, setTitle] = useState(existingEntry?.entry.title || "");
-  const [fields, setFields] = useState<{ field_type: string; labelKey: string; value: string }[]>([]);
+  const [fields, setFields] = useState<{ field_type: string; labelKey: TranslationKey; value: string }[]>([]);
   const [titleError, setTitleError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
@@ -219,12 +220,12 @@ export function EntryForm({ mode, category, existingEntry, onSave, onCancel }: E
             <button
               key={id}
               onClick={() => {
-                // Re-initialize form with new category
-                window.location.hash = ""; // Force re-render
+                setCategory(id);
                 setFields(
                   (categoryTemplates[id] || []).map((tmpl) => ({ ...tmpl, value: "" }))
                 );
                 setTitle("");
+                setDirty(false);
               }}
               className={`flex items-center gap-[var(--spacing-xs)] px-[var(--spacing-md)] py-[var(--spacing-sm)] rounded-[var(--radius-md)] text-[var(--font-size-sm)] transition-colors cursor-pointer ${
                 id === category
