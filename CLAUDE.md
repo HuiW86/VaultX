@@ -80,12 +80,25 @@ Before generating UI code, check:
 - Static data outside components (templates, metadata) use i18n keys, translate at render via `t()`
 - DB stores translated label text — editing existing entries needs reverse lookup (`labelToKey` map)
 
+### Type Safety
+- i18n keys in static data (templates, metadata) must use `TranslationKey` type, not `string`
+- Import `type TranslationKey` from `../../i18n` when defining labelKey fields
+- Component local state from props: add `key` prop to force remount when prop changes
+
 ## Open Source
 
-- **GitHub**: https://github.com/wh759705-creator/VaultX
+- **GitHub**: https://github.com/HuiW86/VaultX (migrated from wh759705-creator)
 - **License**: MIT
 - **Author**: Eric Wang (WeChat: 759705, [SkillNav.dev](https://skillnav.dev))
 - **Dev command**: `npx tauri dev` (not `npm run tauri dev`)
+- **Build**: `npx tauri build` (outputs `.dmg` for macOS, `.exe`/`.msi` for Windows)
+
+## CI/CD
+
+- **Release workflow**: `.github/workflows/release.yml`
+- **Trigger**: push tag `v*` → builds macOS (aarch64 + x86_64) + Windows (x86_64)
+- **Action**: `tauri-apps/tauri-action@v0` auto-creates GitHub Release with bundled artifacts
+- macOS-only deps (`core-foundation`, `security-framework-sys`, `objc2`) behind `cfg(target_os = "macos")` in Cargo.toml
 
 ## Plans
 
