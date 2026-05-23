@@ -34,12 +34,14 @@ Mainstream password managers (1Password, LastPass) force cloud subscriptions. Va
 
 | Layer | Technology |
 |-------|-----------|
-| Desktop framework | [Tauri 2.0](https://v2.tauri.app/) |
-| Frontend | React 18 + TypeScript + Tailwind CSS 4 |
-| Backend | Rust |
+| Desktop framework | [Tauri 2](https://v2.tauri.app/) |
+| Frontend | React 19 + TypeScript + Tailwind CSS 4 |
+| Backend | Rust (edition 2021, MSRV 1.77.2) |
 | Database | SQLCipher (SQLite with full-database encryption) |
 | Crypto | Argon2id (KDF) + AES-256-GCM (field encryption) |
 | State management | Zustand (frontend) + Mutex\<AppState\> (Rust) |
+
+📋 **Full version-pinned snapshot**: [`docs/tech-stack.md`](docs/tech-stack.md) — exhaustive dependency matrix, CI build targets, upgrade workflow.
 
 ## Prerequisites
 
@@ -52,7 +54,7 @@ Mainstream password managers (1Password, LastPass) force cloud subscriptions. Va
 
 ```bash
 # Clone the repo
-git clone https://github.com/wh759705-creator/VaultX.git
+git clone https://github.com/HuiW86/VaultX.git
 cd VaultX
 
 # Install dependencies
@@ -92,7 +94,7 @@ src/
 
 ## Author / 作者
 
-**Eric Wang** — [GitHub](https://github.com/wh759705-creator) | WeChat: 759705
+**Eric Wang** — [GitHub](https://github.com/HuiW86) | WeChat: 759705
 
 Creator of [SkillNav](https://skillnav.dev) — helping Chinese developers discover, evaluate, and use AI Agent tools. We track the AI agent ecosystem and provide structured tool navigation, daily curated news, and in-depth technical columns.
 
