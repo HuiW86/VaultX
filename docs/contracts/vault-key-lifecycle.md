@@ -28,6 +28,18 @@ Scope: `src-tauri/src/commands/{auth,recovery,security,entries}.rs`, `src-tauri/
 | C8 | A v1 vault is migrated to v2 on first successful password unlock: export to a shadow DB keyed with a new random DEK (e.g. `sqlcipher_export`), re-encrypt all fields and history in the shadow, verify every value decrypts and the shadow reopens, then commit through explicit, restart-safe states; the original DB is kept until the commit completes. | v1 vaults | Migration tests incl. fault injection at each state |
 | C9 | After a successful recovery the frontend clears decrypted entry and search caches. | frontend | Review |
 
+## Implementation decisions (2026-09-28, recorded with the v2 implementation)
+
+These refine how the conventions above are met; they do not relax any of them.
+
+- **Code location.** Flows live in `src-tauri/src/vault/` (`lifecycle.rs`: create, unlock, Touch ID, recovery kit, recovery, password change, Keychain invalidation, `reconcile`; `migration.rs`: v1→v2; `keystore.rs`: `KeyStore` trait + in-memory fake; `recovery_key.rs`). Wrapping is `crypto/key_wrap.rs`. Tauri commands only call these. Every flow takes a fault hook called at each commit point; production passes `no_faults`.
+- **Meta.** `.vaultx-meta` v2 also carries `db_path` (one of `vault.db`, `vault.v2.db`; anything else is rejected) and `keychain_invalidation_pending`. Meta writes are temp file + fsync + rename + directory fsync (C3).
+- **Migration commit (C8).** The shadow DB is `vault.v2.db`. The single commit point is the atomic rename of a v2 meta whose `db_path` is `vault.v2.db`. Before it, the v1 meta and `vault.db` are untouched; after it, `vault.db` is deleted. `reconcile` (run at the start of every flow) deletes whichever known DB file the current meta does not reference, only if the referenced DB exists, plus a stale `.vaultx-meta.tmp`.
+- **Migration failure (C1 over C8).** If migration fails during a password unlock, the unlock still succeeds on the v1 vault ("legacy mode") and migration is retried at the next password unlock. In legacy mode, generating a recovery kit and enabling Touch ID are refused so the legacy key is never persisted again. Touch ID unlock is refused for v1 vaults.
+- **v1 recovery.** Recovering a v1 vault decrypts the legacy key from `recovery_blob` and runs the same migration with the new password; the resulting v2 meta has no recovery wrap (C5).
+- **Keychain invalidation (C6).** Recovery and migration set `keychain_invalidation_pending` in the same atomic meta write that commits them. Afterwards (and on every later password unlock while the flag is set) the app sets `touch_id_enabled` to false, deletes the Keychain item, then clears the flag. Touch ID unlock is refused while the flag is set. If deletion fails after a recovery, `recover_with_key` returns `touch_id_cleanup_failed: true` and the UI shows an error toast.
+- **Password change.** No IPC command or UI exists yet; `vault::lifecycle::change_password` is the only implementation and is covered by the C1/C2 tests. Any future command must call it.
+
 ## Reporting and arbitration
 
 Any change in scope must report the status of **every** convention above: satisfied (with test or code location), or an exception recorded in this file with scope, reason and date. Skipping a convention silently is a violation. If code and this contract disagree, fix the code unless the owner changes the contract.
