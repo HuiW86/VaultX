@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 
 use super::keystore::KeyStore;
 use super::lock::VaultLock;
-use super::{migration, recovery_key, FaultHook};
+use super::{migration, rate_limit, recovery_key, FaultHook};
 use crate::commands::settings::{read_settings, write_settings};
 use crate::crypto::{encryption, key_derivation, key_wrap};
 use crate::db::connection::{
@@ -53,6 +53,8 @@ pub enum UnlockFailure {
 pub enum RecoverFailure {
     InvalidKey,
     NoRecoveryKit,
+    /// Too many failed attempts (password or recovery); the key was not evaluated (C12).
+    RateLimited { retry_after_ms: u64 },
     Other(String),
 }
 
@@ -62,6 +64,7 @@ impl RecoverFailure {
         match self {
             RecoverFailure::InvalidKey => "Invalid recovery key".to_string(),
             RecoverFailure::NoRecoveryKit => "No recovery kit has been set up".to_string(),
+            RecoverFailure::RateLimited { retry_after_ms } => rate_limit::message(*retry_after_ms),
             RecoverFailure::Other(e) => e.clone(),
         }
     }
@@ -362,6 +365,34 @@ pub fn recover(
         unlocked: Unlocked { conn, key: dek, legacy: false },
         keychain_error,
     })
+}
+
+/// `recover` behind the persistent failed-attempt limiter shared with
+/// password unlock (C12). This is the entry point for the IPC command.
+/// While limited, the key is not evaluated. An invalid key counts as a
+/// failure; success clears the counter; other errors leave it unchanged.
+pub fn recover_rate_limited(
+    dir: &Path,
+    recovery_key_text: &str,
+    new_password: &[u8],
+    keystore: &dyn KeyStore,
+    hook: FaultHook,
+    now_ms: u64,
+) -> Result<RecoverOutcome, RecoverFailure> {
+    if let Err(retry_after_ms) = rate_limit::check(dir, now_ms) {
+        return Err(RecoverFailure::RateLimited { retry_after_ms });
+    }
+    match recover(dir, recovery_key_text, new_password, keystore, hook) {
+        Ok(outcome) => {
+            rate_limit::clear(dir);
+            Ok(outcome)
+        }
+        Err(RecoverFailure::InvalidKey) => {
+            rate_limit::record_failure(dir, now_ms);
+            Err(RecoverFailure::InvalidKey)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Change the master password: rewrap the DEK only (C2). The recovery kit

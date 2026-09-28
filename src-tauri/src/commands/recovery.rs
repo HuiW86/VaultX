@@ -5,7 +5,7 @@ use zeroize::Zeroizing;
 
 use crate::commands::security::SystemKeyStore;
 use crate::state::AppState;
-use crate::vault::{lifecycle, no_faults};
+use crate::vault::{lifecycle, no_faults, rate_limit};
 
 #[derive(Debug, Serialize)]
 pub struct RecoveryKitResult {
@@ -72,12 +72,14 @@ pub fn recover_with_key(
     app.clear();
 
     let keystore = SystemKeyStore;
-    let outcome = lifecycle::recover(
+    // Bounded input and the shared persistent rate limit (C12).
+    let outcome = lifecycle::recover_rate_limited(
         &app.data_dir,
         &recovery_key,
         new_password.as_bytes(),
         &keystore,
         &no_faults,
+        rate_limit::now_ms(),
     )
     .map_err(|e| e.message())?;
 

@@ -196,7 +196,7 @@ fn try_recovery_key(dir: &Path, key: &str) -> Option<VaultPlaintexts> {
     match lifecycle::recover(scratch.path(), key, b"probe-password", &ks, &no_faults) {
         Ok(o) => Some(migration::collect_plaintexts(&o.unlocked.conn, &o.unlocked.key).expect("C7: all data readable")),
         Err(RecoverFailure::InvalidKey) | Err(RecoverFailure::NoRecoveryKit) => None,
-        Err(RecoverFailure::Other(e)) => panic!("unexpected recover error: {e}"),
+        Err(e) => panic!("unexpected recover error: {e:?}"),
     }
 }
 
@@ -739,4 +739,53 @@ fn keychain_item_is_deleted_even_if_settings_write_fails() {
     lifecycle::finish_keychain_invalidation(dir.path(), &ks).unwrap();
     assert!(!touch_id_setting(dir.path()));
     assert!(!connection::read_meta(dir.path()).unwrap().keychain_invalidation_pending);
+}
+
+// ---------- F5: bounded, rate-limited recovery (C12) ----------
+
+#[test]
+fn recovery_is_rate_limited_with_the_shared_counter() {
+    use vaultx_lib::vault::rate_limit;
+    let dir = TempDir::new().unwrap();
+    let (baseline, kit) = make_v2_vault(dir.path());
+    let ks = MemoryKeyStore::new();
+    let wrong = recovery_key::encode_grouped(&[0x42; 16]);
+    let t0 = 10_000_000u64;
+
+    // Four earlier wrong passwords count toward the same limit.
+    for _ in 0..4 {
+        rate_limit::record_failure(dir.path(), t0);
+    }
+    let err = lifecycle::recover_rate_limited(dir.path(), &wrong, NEW_PW, &ks, &no_faults, t0).unwrap_err();
+    assert_eq!(err, RecoverFailure::InvalidKey);
+    assert_eq!(rate_limit::read(dir.path()).count, 5);
+
+    // Now limited: even the correct key is not evaluated.
+    let err = lifecycle::recover_rate_limited(dir.path(), &kit, NEW_PW, &ks, &no_faults, t0 + 1_000).unwrap_err();
+    assert_eq!(err, RecoverFailure::RateLimited { retry_after_ms: 4_000 });
+    assert!(err.message().starts_with("Too many failed attempts"));
+    assert!(connection::read_meta(dir.path()).unwrap().dek_wrapped_by_recovery.is_some(), "kit untouched");
+    // Password unlock sees the same lockout.
+    assert!(rate_limit::check(dir.path(), t0 + 1_000).is_err());
+
+    // Over-long input is rejected without parsing and counts as a failure.
+    let huge = "A".repeat(100_000);
+    let err = lifecycle::recover_rate_limited(dir.path(), &huge, NEW_PW, &ks, &no_faults, t0 + 5_000).unwrap_err();
+    assert_eq!(err, RecoverFailure::InvalidKey);
+    assert_eq!(rate_limit::read(dir.path()).count, 6);
+
+    // After the delay, the valid key works and clears the counter.
+    let o = lifecycle::recover_rate_limited(dir.path(), &kit, NEW_PW, &ks, &no_faults, t0 + 5_000 + 15_000).unwrap();
+    assert_eq!(migration::collect_plaintexts(&o.unlocked.conn, &o.unlocked.key).unwrap(), baseline);
+    assert_eq!(rate_limit::read(dir.path()).count, 0);
+}
+
+#[test]
+fn recovery_rejects_overlong_input_before_touching_the_vault() {
+    let dir = TempDir::new().unwrap();
+    let (_, kit) = make_v2_vault(dir.path());
+    let ks = MemoryKeyStore::new();
+    let padded = format!("{kit}{}", " ".repeat(recovery_key::MAX_RECOVERY_KEY_INPUT_LEN));
+    assert_eq!(lifecycle::recover(dir.path(), &padded, NEW_PW, &ks, &no_faults).unwrap_err(), RecoverFailure::InvalidKey);
+    assert!(connection::read_meta(dir.path()).unwrap().dek_wrapped_by_recovery.is_some());
 }

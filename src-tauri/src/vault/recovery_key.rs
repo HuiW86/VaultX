@@ -6,6 +6,9 @@ use zeroize::Zeroizing;
 use crate::crypto::key_derivation;
 
 pub const RECOVERY_KEY_LEN: usize = 16; // 128 bits
+/// Longest accepted recovery key input in bytes (C12). A kit key is 32
+/// characters (26 base32 + 6 hyphens); the margin allows stray whitespace.
+pub const MAX_RECOVERY_KEY_INPUT_LEN: usize = 64;
 // Salt specifically for recovery key derivation (constant, embedded). The
 // recovery key itself carries 128 bits of entropy.
 const RECOVERY_SALT: &[u8] = b"vaultx-recovery-key-derivation00";
@@ -49,7 +52,11 @@ pub fn encode_grouped(bytes: &[u8]) -> String {
 }
 
 /// Decode a grouped base32 recovery key. Errors never echo input characters (C4).
+/// Input longer than `MAX_RECOVERY_KEY_INPUT_LEN` bytes is rejected unparsed (C12).
 pub fn decode(input: &str) -> Result<Zeroizing<Vec<u8>>, String> {
+    if input.len() > MAX_RECOVERY_KEY_INPUT_LEN {
+        return Err("Invalid recovery key format".to_string());
+    }
     let mut bits = 0u32;
     let mut bits_left = 0u8;
     let mut result = Zeroizing::new(Vec::new());
@@ -100,6 +107,17 @@ mod tests {
         let err = decode("ABCD-EF1H").unwrap_err();
         assert_eq!(err, "Invalid recovery key format");
         assert!(!err.contains('1'));
+    }
+
+    #[test]
+    fn overlong_input_is_rejected_before_parsing() {
+        let key = encode_grouped(&[0x5A; RECOVERY_KEY_LEN]);
+        assert!(key.len() <= MAX_RECOVERY_KEY_INPUT_LEN);
+        assert!(decode(&format!("  {key}  ")).is_ok());
+        let long = "A".repeat(MAX_RECOVERY_KEY_INPUT_LEN + 1);
+        assert_eq!(decode(&long).unwrap_err(), "Invalid recovery key format");
+        let huge = format!("{key}{}", " ".repeat(1 << 20));
+        assert!(decode(&huge).is_err());
     }
 
     #[test]

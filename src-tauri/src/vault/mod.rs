@@ -8,6 +8,7 @@
 pub mod keystore;
 pub mod lifecycle;
 pub mod lock;
+pub mod rate_limit;
 pub mod migration;
 pub mod recovery_key;
 
