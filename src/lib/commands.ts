@@ -85,6 +85,11 @@ export interface VaultxSettings {
 
 // -- API calls --
 
+export interface RecoverResult {
+  /** Recovery succeeded but the Touch ID Keychain item could not be removed. */
+  touch_id_cleanup_failed: boolean;
+}
+
 export const api = {
   getAppStatus: () => invoke<AppStatus>("get_app_status"),
   setupVault: (password: string) => invoke<void>("setup_vault", { password }),
@@ -158,5 +163,5 @@ export const api = {
   generateRecoveryKit: () =>
     invoke<{ recovery_key: string; file_content: string }>("generate_recovery_kit"),
   recoverWithKey: (recoveryKey: string, newPassword: string) =>
-    invoke<void>("recover_with_key", { recoveryKey, newPassword }),
+    invoke<RecoverResult>("recover_with_key", { recoveryKey, newPassword }),
 };

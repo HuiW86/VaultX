@@ -38,6 +38,7 @@ const zhCN: Translations = {
   "lock.confirm_new_placeholder": "确认新密码",
   "lock.recovery_key_required": "请输入恢复密钥",
   "lock.recovery_failed": "恢复失败，请检查恢复密钥。",
+  "lock.recovery_touch_id_cleanup_failed": "密码已重置，但未能从钥匙串移除 Touch ID 密钥；请在设置中关闭后重新开启 Touch ID。",
   "lock.reset_password": "重置密码",
   "lock.try_again_in": "{countdown}秒后重试",
   "lock.wait": "等待 {countdown}秒",

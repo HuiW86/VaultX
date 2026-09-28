@@ -36,6 +36,7 @@ const en = {
   "lock.confirm_new_placeholder": "Confirm new password",
   "lock.recovery_key_required": "Recovery key is required",
   "lock.recovery_failed": "Recovery failed. Check your recovery key.",
+  "lock.recovery_touch_id_cleanup_failed": "Password reset. Touch ID could not be removed from the Keychain; turn it off and on again in Settings.",
   "lock.reset_password": "Reset Password",
   "lock.try_again_in": "Try again in {countdown}s",
   "lock.wait": "Wait {countdown}s",
