@@ -66,16 +66,23 @@ export function RecoveryKitDialog({ open, onClose }: RecoveryKitDialogProps) {
     else setConfirmingClose(true);
   }, [downloaded, onClose]);
   const cancelClose = useCallback(() => setConfirmingClose(false), []);
+  // Once "generate" is clicked the backend may commit the new kit (and
+  // invalidate the old one) at any moment, so no close path may drop the
+  // dialog before the new key is shown (H3).
+  const closeUnlessGenerating = useCallback(() => {
+    if (!loading) onClose();
+  }, [loading, onClose]);
 
   if (!recoveryKey) {
     return (
       <Modal
         open={open}
-        onClose={onClose}
+        onClose={closeUnlessGenerating}
         title={t("recovery_kit.confirm_title")}
         confirmLabel={t("recovery_kit.confirm")}
         onConfirm={handleGenerate}
         loading={loading}
+        dismissible={!loading}
       >
         <p>{t("recovery_kit.confirm_desc")}</p>
         {error && (
