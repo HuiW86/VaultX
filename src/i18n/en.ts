@@ -217,6 +217,20 @@ const en = {
   "modal.cancel": "Cancel",
   "modal.close": "Close",
 
+  // Recovery kit (settings + missing-kit notice, contract C11)
+  "recovery_kit.settings_label": "Recovery kit",
+  "recovery_kit.missing_status": "Not set up",
+  "recovery_kit.regenerate": "Regenerate…",
+  "recovery_kit.confirm_title": "Regenerate recovery kit",
+  "recovery_kit.confirm_desc": "A new recovery key will be created. Any recovery kit you saved before will stop working.",
+  "recovery_kit.confirm": "Generate new kit",
+  "recovery_kit.new_title": "Save your new recovery kit",
+  "recovery_kit.new_desc": "Download it and keep it somewhere safe, away from this computer. It is shown only once.",
+  "recovery_kit.done": "Done",
+  "recovery_kit.failed": "Could not create a recovery kit. Try again.",
+  "recovery_kit.banner": "Your vault has no valid recovery kit. If you forget your master password, you won't be able to get back in.",
+  "recovery_kit.banner_action": "Create recovery kit",
+
   // ErrorState
   "error.something_wrong": "Something went wrong",
   "error.retry": "Retry",

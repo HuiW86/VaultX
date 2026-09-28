@@ -219,6 +219,20 @@ const zhCN: Translations = {
   "modal.cancel": "取消",
   "modal.close": "关闭",
 
+  // Recovery kit (settings + missing-kit notice, contract C11)
+  "recovery_kit.settings_label": "恢复包",
+  "recovery_kit.missing_status": "未设置",
+  "recovery_kit.regenerate": "重新生成…",
+  "recovery_kit.confirm_title": "重新生成恢复包",
+  "recovery_kit.confirm_desc": "将创建新的恢复密钥，之前保存的恢复包将全部失效。",
+  "recovery_kit.confirm": "生成新恢复包",
+  "recovery_kit.new_title": "保存新的恢复包",
+  "recovery_kit.new_desc": "请下载并保存在安全的地方，不要放在这台电脑上。恢复密钥只显示这一次。",
+  "recovery_kit.done": "完成",
+  "recovery_kit.failed": "无法创建恢复包，请重试。",
+  "recovery_kit.banner": "你的保险库目前没有有效的恢复包。如果忘记主密码，将无法找回。",
+  "recovery_kit.banner_action": "创建恢复包",
+
   // ErrorState
   "error.something_wrong": "出了点问题",
   "error.retry": "重试",

@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { EntryList } from "./EntryList";
 import { DetailPanel } from "./DetailPanel";
 import { SettingsPanel } from "../settings/SettingsPanel";
+import { RecoveryKitBanner } from "./RecoveryKitBanner";
 
 interface ThreePanelProps {
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
@@ -35,6 +36,7 @@ export function ThreePanel({ searchInputRef }: ThreePanelProps) {
       </div>
 
       <main className="bg-[var(--color-bg-panel)] overflow-y-auto" style={{ paddingTop: 16 }}>
+        <RecoveryKitBanner />
         {showSettings ? (
           <SettingsPanel onClose={() => setShowSettings(false)} />
         ) : (
