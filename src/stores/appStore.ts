@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, type RecoverResult, type RecoveryKitStatus, type UnlockError } from "../lib/commands";
+import { MANUAL_RESTORE_REQUIRED, isManualRestoreError } from "../lib/errors";
 
 /**
  * Reset every store that caches decrypted entries, search results or
@@ -70,7 +71,10 @@ export const useAppStore = create<AppState>((set) => ({
     } catch (e: any) {
       // Tauri IPC errors from Result<_, UnlockError> come as the serialized UnlockError
       const unlockErr = e as Partial<UnlockError>;
-      const msg = unlockErr?.message || (typeof e === "string" ? e : "Unlock failed");
+      // The lock screen renders the manual-restore code as a translated notice.
+      const msg = isManualRestoreError(e)
+        ? MANUAL_RESTORE_REQUIRED
+        : unlockErr?.message || (typeof e === "string" ? e : "Unlock failed");
       set({
         error: msg,
         retryAfterMs: unlockErr?.retry_after_ms ?? null,

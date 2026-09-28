@@ -41,6 +41,8 @@ const en = {
   "lock.try_again_in": "Try again in {countdown}s",
   "lock.wait": "Wait {countdown}s",
   "lock.unlock": "Unlock",
+  "lock.manual_restore_title": "Your vault needs a manual restore",
+  "lock.manual_restore_desc": "The upgraded vault database failed its safety check, so VaultX did not open it. Nothing was deleted: your previous database (vault.db) is kept in the VaultX data folder. Quit VaultX, copy the whole folder (~/Library/Application Support/com.vaultx.app) to a safe place and do not delete any file in it. Then restore the previous database manually as described in the VaultX manual restore guide, or contact support with that copy.",
 
   // Sidebar
   "sidebar.vaults": "Vaults",

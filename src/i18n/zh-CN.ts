@@ -43,6 +43,8 @@ const zhCN: Translations = {
   "lock.try_again_in": "{countdown}秒后重试",
   "lock.wait": "等待 {countdown}秒",
   "lock.unlock": "解锁",
+  "lock.manual_restore_title": "保险库需要手动恢复",
+  "lock.manual_restore_desc": "升级后的保险库数据库未通过安全校验，VaultX 没有打开它。没有删除任何数据：之前的数据库（vault.db）仍保留在 VaultX 数据文件夹中。请退出 VaultX，将整个文件夹（~/Library/Application Support/com.vaultx.app）复制到安全位置，不要删除其中任何文件；然后按 VaultX 手动恢复指南恢复之前的数据库，或携带该副本联系支持。",
 
   // Sidebar
   "sidebar.vaults": "保险库",
