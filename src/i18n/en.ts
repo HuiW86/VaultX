@@ -228,6 +228,10 @@ const en = {
   "recovery_kit.new_desc": "Download it and keep it somewhere safe, away from this computer. It is shown only once.",
   "recovery_kit.done": "Done",
   "recovery_kit.failed": "Could not create a recovery kit. Try again.",
+  "recovery_kit.close_confirm_title": "Close without saving the kit?",
+  "recovery_kit.close_confirm_desc": "Your previous recovery kit no longer works. If you close now without downloading the new one, this key will not be shown again and you will have no working recovery kit.",
+  "recovery_kit.close_back": "Back to download",
+  "recovery_kit.close_anyway": "Close anyway",
   "recovery_kit.banner": "Your vault has no valid recovery kit. If you forget your master password, you won't be able to get back in.",
   "recovery_kit.banner_action": "Create recovery kit",
 

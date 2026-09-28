@@ -230,6 +230,10 @@ const zhCN: Translations = {
   "recovery_kit.new_desc": "请下载并保存在安全的地方，不要放在这台电脑上。恢复密钥只显示这一次。",
   "recovery_kit.done": "完成",
   "recovery_kit.failed": "无法创建恢复包，请重试。",
+  "recovery_kit.close_confirm_title": "不保存恢复包就关闭？",
+  "recovery_kit.close_confirm_desc": "之前的恢复包已失效。如果现在不下载新的恢复包就关闭，此密钥将不会再次显示，你将没有可用的恢复包。",
+  "recovery_kit.close_back": "返回下载",
+  "recovery_kit.close_anyway": "仍然关闭",
   "recovery_kit.banner": "你的保险库目前没有有效的恢复包。如果忘记主密码，将无法找回。",
   "recovery_kit.banner_action": "创建恢复包",
 

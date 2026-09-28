@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { RecoveryKitBanner } from "../components/layout/RecoveryKitBanner";
 import { SettingsPanel } from "../components/settings/SettingsPanel";
+import { RecoveryKitDialog } from "../components/settings/RecoveryKitDialog";
 import { useAppStore } from "../stores/appStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { I18nProvider } from "../i18n";
@@ -154,6 +155,76 @@ describe("SettingsPanel recovery kit entry", () => {
       expect(zh, k).toBeTruthy();
       expect(zh, k).not.toBe((en as Record<string, string>)[k]);
     }
+  });
+});
+
+describe("RecoveryKitDialog close guard (G1)", () => {
+  type ClosePath = "x" | "overlay" | "escape";
+
+  async function attemptClose(user: ReturnType<typeof userEvent.setup>, path: ClosePath) {
+    if (path === "x") {
+      await user.click(screen.getByRole("button", { name: en["modal.close"] }));
+    } else if (path === "overlay") {
+      const overlay = screen.getByRole("dialog").previousElementSibling as HTMLElement;
+      await user.click(overlay);
+    } else {
+      await user.keyboard("{Escape}");
+    }
+  }
+
+  async function openWithNewKit() {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithI18n(<RecoveryKitDialog open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: en["recovery_kit.confirm"] }));
+    expect(await screen.findByTestId("recovery-key")).toHaveTextContent(KIT.recovery_key);
+    return { onClose, user };
+  }
+
+  for (const path of ["x", "overlay", "escape"] as const) {
+    it(`does not close silently via ${path} before the kit is downloaded`, async () => {
+      const { onClose, user } = await openWithNewKit();
+
+      await attemptClose(user, path);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(en["recovery_kit.close_confirm_desc"]);
+
+      // The same close path on the confirmation only goes back to the key.
+      await attemptClose(user, path);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByTestId("recovery-key")).toHaveTextContent(KIT.recovery_key);
+
+      // Closing needs the explicit "close anyway" choice.
+      await attemptClose(user, path);
+      await user.click(screen.getByRole("button", { name: en["recovery_kit.close_anyway"] }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it(`closes via ${path} once the kit is downloaded`, async () => {
+      const { onClose, user } = await openWithNewKit();
+      await user.click(screen.getByRole("button", { name: en["setup.recovery_download"] }));
+      await attemptClose(user, path);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("offers a way back to the download from the confirmation", async () => {
+    const { onClose, user } = await openWithNewKit();
+    await attemptClose(user, "x");
+    await user.click(screen.getByRole("button", { name: en["recovery_kit.close_back"] }));
+    await user.click(screen.getByRole("button", { name: en["setup.recovery_download"] }));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: en["recovery_kit.done"] }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes freely before a kit is generated (the old kit still works)", async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithI18n(<RecoveryKitDialog open onClose={onClose} />);
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).not.toHaveBeenCalledWith("generate_recovery_kit");
   });
 });
 

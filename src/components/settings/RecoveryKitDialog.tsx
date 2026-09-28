@@ -25,6 +25,7 @@ export function RecoveryKitDialog({ open, onClose }: RecoveryKitDialogProps) {
   const [recoveryKey, setRecoveryKey] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [downloaded, setDownloaded] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
 
   // Drop the key text from component state whenever the dialog closes.
   useEffect(() => {
@@ -32,6 +33,7 @@ export function RecoveryKitDialog({ open, onClose }: RecoveryKitDialogProps) {
     setRecoveryKey("");
     setFileContent("");
     setDownloaded(false);
+    setConfirmingClose(false);
     setError("");
     setLoading(false);
   }, [open]);
@@ -57,6 +59,14 @@ export function RecoveryKitDialog({ open, onClose }: RecoveryKitDialogProps) {
     setDownloaded(true);
   }, [fileContent]);
 
+  // Once a new kit exists the previous one no longer works, so every close
+  // path (X, overlay, Escape) asks for confirmation until the kit is saved.
+  const guardedClose = useCallback(() => {
+    if (downloaded) onClose();
+    else setConfirmingClose(true);
+  }, [downloaded, onClose]);
+  const cancelClose = useCallback(() => setConfirmingClose(false), []);
+
   if (!recoveryKey) {
     return (
       <Modal
@@ -77,8 +87,27 @@ export function RecoveryKitDialog({ open, onClose }: RecoveryKitDialogProps) {
     );
   }
 
+  if (confirmingClose) {
+    // Close paths here only go back to the key; closing needs the explicit button.
+    return (
+      <Modal open={open} onClose={cancelClose} title={t("recovery_kit.close_confirm_title")}>
+        <p role="alert" className="mb-[var(--spacing-md)]">
+          {t("recovery_kit.close_confirm_desc")}
+        </p>
+        <div className="flex justify-end gap-[var(--spacing-sm)]">
+          <Button variant="ghost" onClick={onClose}>
+            {t("recovery_kit.close_anyway")}
+          </Button>
+          <Button variant="primary" onClick={cancelClose}>
+            {t("recovery_kit.close_back")}
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title={t("recovery_kit.new_title")}>
+    <Modal open={open} onClose={guardedClose} title={t("recovery_kit.new_title")}>
       <p className="mb-[var(--spacing-md)]">{t("recovery_kit.new_desc")}</p>
       <div className="w-full bg-[var(--color-bg-panel)] border border-[var(--color-border)] rounded-[var(--radius-lg)] p-[var(--spacing-md)] mb-[var(--spacing-md)]">
         <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] mb-[var(--spacing-xs)]">
