@@ -1,5 +1,5 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit, OsRng, Payload},
     Aes256Gcm, AeadCore, Nonce,
 };
 
@@ -11,15 +11,35 @@ use aes_gcm::{
 const ENCRYPTION_VERSION: u8 = 1;
 const NONCE_LEN: usize = 12;
 
+/// Field types whose values are AES-256-GCM encrypted with the vault DEK
+/// (on top of SQLCipher). Shared by entry commands and the v1→v2 migration.
+pub const SENSITIVE_FIELD_TYPES: &[&str] = &["password", "hidden", "card_number"];
+
+pub fn is_sensitive_field_type(field_type: &str) -> bool {
+    SENSITIVE_FIELD_TYPES.contains(&field_type)
+}
+
 /// Encrypt plaintext with AES-256-GCM.
 /// Returns: version(1) || nonce(12) || ciphertext || tag(16)
 pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| format!("Invalid key: {e}"))?;
+    encrypt_with_aad(key, plaintext, b"")
+}
+
+/// Decrypt data produced by encrypt().
+/// Expects: version(1) || nonce(12) || ciphertext || tag(16)
+pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
+    decrypt_with_aad(key, data, b"")
+}
+
+/// Encrypt with AES-256-GCM, binding `aad` as associated data.
+/// Same output format as `encrypt`; decrypting requires the identical `aad`.
+pub fn encrypt_with_aad(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
+    // Error texts are fixed strings: never echo key material (contract C4).
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "Invalid key length".to_string())?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext)
-        .map_err(|e| format!("Encryption failed: {e}"))?;
+        .encrypt(&nonce, Payload { msg: plaintext, aad })
+        .map_err(|_| "Encryption failed".to_string())?;
 
     let mut result = Vec::with_capacity(1 + NONCE_LEN + ciphertext.len());
     result.push(ENCRYPTION_VERSION);
@@ -28,9 +48,8 @@ pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     Ok(result)
 }
 
-/// Decrypt data produced by encrypt().
-/// Expects: version(1) || nonce(12) || ciphertext || tag(16)
-pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
+/// Decrypt data produced by `encrypt_with_aad` with the same `aad`.
+pub fn decrypt_with_aad(key: &[u8; 32], data: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
     let min_len = 1 + NONCE_LEN + 16; // version + nonce + tag (minimum, empty plaintext)
     if data.len() < min_len {
         return Err("Data too short to be valid ciphertext".to_string());
@@ -44,10 +63,9 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
     let nonce = Nonce::from_slice(&data[1..1 + NONCE_LEN]);
     let ciphertext = &data[1 + NONCE_LEN..];
 
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| format!("Invalid key: {e}"))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "Invalid key length".to_string())?;
     cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(nonce, Payload { msg: ciphertext, aad })
         .map_err(|_| "Decryption failed: wrong key or corrupted data".to_string())
 }
 
@@ -110,6 +128,15 @@ mod tests {
     fn data_too_short() {
         let key = random_key();
         assert!(decrypt(&key, &[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = random_key();
+        let encrypted = encrypt_with_aad(&key, b"secret", b"label-a").unwrap();
+        assert_eq!(decrypt_with_aad(&key, &encrypted, b"label-a").unwrap(), b"secret");
+        assert!(decrypt_with_aad(&key, &encrypted, b"label-b").is_err());
+        assert!(decrypt(&key, &encrypted).is_err());
     }
 
     #[test]
