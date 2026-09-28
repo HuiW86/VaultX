@@ -58,6 +58,18 @@ pub fn generate_recovery_kit(
     Ok(RecoveryKitResult { recovery_key, file_content })
 }
 
+/// Recovery kit presence for the missing-kit notice (contract C11).
+#[tauri::command]
+pub fn get_recovery_kit_status(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<lifecycle::RecoveryKitStatus, String> {
+    let app = state.lock().map_err(|_| "Lock poisoned".to_string())?;
+    if !app.is_unlocked() {
+        return Err("Vault is locked".to_string());
+    }
+    lifecycle::recovery_kit_status(&app.data_dir, app.legacy)
+}
+
 /// Recover the vault with the recovery key and set a new master password.
 /// Only the DEK is rewrapped; the DB and fields are untouched (contract C2).
 #[tauri::command]

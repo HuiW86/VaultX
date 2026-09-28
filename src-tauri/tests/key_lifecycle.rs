@@ -789,3 +789,40 @@ fn recovery_rejects_overlong_input_before_touching_the_vault() {
     assert_eq!(lifecycle::recover(dir.path(), &padded, NEW_PW, &ks, &no_faults).unwrap_err(), RecoverFailure::InvalidKey);
     assert!(connection::read_meta(dir.path()).unwrap().dek_wrapped_by_recovery.is_some());
 }
+
+// ---------- F3: recovery kit status for the missing-kit notice (C11) ----------
+
+#[test]
+fn recovery_kit_status_reports_missing_kits() {
+    use lifecycle::RecoveryKitStatus;
+    let dir = TempDir::new().unwrap();
+    let (_, kit) = make_v2_vault(dir.path());
+    assert_eq!(
+        lifecycle::recovery_kit_status(dir.path(), false).unwrap(),
+        RecoveryKitStatus { present: true, can_generate: true }
+    );
+
+    // Recovery consumes the kit (C5): the status must say so.
+    let ks = MemoryKeyStore::new();
+    let o = lifecycle::recover(dir.path(), &kit, NEW_PW, &ks, &no_faults).unwrap();
+    assert_eq!(
+        lifecycle::recovery_kit_status(dir.path(), false).unwrap(),
+        RecoveryKitStatus { present: false, can_generate: true }
+    );
+    // Regenerating restores it.
+    lifecycle::generate_recovery_kit(dir.path(), &o.unlocked.key, false, &no_faults).unwrap();
+    assert!(lifecycle::recovery_kit_status(dir.path(), false).unwrap().present);
+
+    // Migration drops the v1 kit.
+    let v1 = TempDir::new().unwrap();
+    make_v1_vault(v1.path());
+    assert_eq!(
+        lifecycle::recovery_kit_status(v1.path(), true).unwrap(),
+        RecoveryKitStatus { present: true, can_generate: false }
+    );
+    let u = lifecycle::unlock_with_password(v1.path(), OLD_PW, &ks, &no_faults).unwrap();
+    assert_eq!(
+        lifecycle::recovery_kit_status(v1.path(), u.legacy).unwrap(),
+        RecoveryKitStatus { present: false, can_generate: true }
+    );
+}

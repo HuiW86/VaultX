@@ -261,6 +261,26 @@ pub fn enable_touch_id(
     keystore.store(dek)
 }
 
+/// Whether the vault has a usable recovery kit (C11). Read-only; no lock.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RecoveryKitStatus {
+    /// v2: `dek_wrapped_by_recovery` present; v1: `recovery_blob` present.
+    pub present: bool,
+    /// False in legacy mode or for a v1 vault, where kit generation is refused.
+    pub can_generate: bool,
+}
+
+pub fn recovery_kit_status(dir: &Path, legacy: bool) -> Result<RecoveryKitStatus, String> {
+    let meta = connection::read_meta(dir)?;
+    Ok(match meta.version {
+        META_VERSION_V2 => RecoveryKitStatus {
+            present: meta.dek_wrapped_by_recovery.is_some(),
+            can_generate: !legacy,
+        },
+        _ => RecoveryKitStatus { present: meta.recovery_blob.is_some(), can_generate: false },
+    })
+}
+
 /// Create a new recovery kit: wrap the DEK with a fresh recovery KEK and
 /// commit it to meta (replacing any previous kit). Returns the grouped key.
 pub fn generate_recovery_kit(
