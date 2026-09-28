@@ -2,8 +2,36 @@ use std::sync::Mutex;
 use tauri::State;
 use zeroize::Zeroizing;
 
-use crate::db::connection;
 use crate::state::AppState;
+use crate::vault::keystore::KeyStore;
+use crate::vault::lifecycle;
+
+/// The real Keychain (macOS). Every Keychain call in the app goes through
+/// this type via the `KeyStore` trait so tests can substitute a fake (C6).
+pub struct SystemKeyStore;
+
+impl KeyStore for SystemKeyStore {
+    fn store(&self, dek: &[u8; 32]) -> Result<(), String> {
+        #[cfg(target_os = "macos")]
+        { macos::store_key(dek) }
+        #[cfg(not(target_os = "macos"))]
+        { let _ = dek; Err("Touch ID not supported on this platform".into()) }
+    }
+
+    fn read(&self) -> Result<Zeroizing<Vec<u8>>, String> {
+        #[cfg(target_os = "macos")]
+        { macos::read_key() }
+        #[cfg(not(target_os = "macos"))]
+        { Err("Touch ID not supported".into()) }
+    }
+
+    fn delete(&self) -> Result<(), String> {
+        #[cfg(target_os = "macos")]
+        { macos::delete_key() }
+        #[cfg(not(target_os = "macos"))]
+        { Ok(()) }
+    }
+}
 
 #[tauri::command]
 pub fn is_touch_id_available() -> bool {
@@ -13,26 +41,17 @@ pub fn is_touch_id_available() -> bool {
     { false }
 }
 
+/// Store a copy of the DEK (never a password KEK) in the Keychain.
 #[tauri::command]
 pub fn setup_touch_id(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
     let app = state.lock().map_err(|_| "Lock poisoned".to_string())?;
-    let key = app.master_key.as_ref().ok_or("Vault is locked")?;
-
-    #[cfg(target_os = "macos")]
-    {
-        let _ = macos::delete_key(); // Remove stale key if any
-        macos::store_key(key.as_ref())
-    }
-    #[cfg(not(target_os = "macos"))]
-    { Err("Touch ID not supported on this platform".into()) }
+    let dek = app.dek.as_ref().ok_or("Vault is locked")?;
+    lifecycle::enable_touch_id(&app.data_dir, dek, app.legacy, &SystemKeyStore)
 }
 
 #[tauri::command]
 pub fn disable_touch_id() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    { macos::delete_key() }
-    #[cfg(not(target_os = "macos"))]
-    { Ok(()) }
+    SystemKeyStore.delete()
 }
 
 #[tauri::command]
@@ -41,26 +60,9 @@ pub fn unlock_biometric(state: State<'_, Mutex<AppState>>) -> Result<(), String>
     if app.is_unlocked() {
         return Ok(());
     }
-
-    #[cfg(target_os = "macos")]
-    {
-        // Read master_key from Keychain (triggers Touch ID prompt)
-        let key_bytes = macos::read_key()?;
-        if key_bytes.len() != 32 {
-            return Err("Invalid key in Keychain".into());
-        }
-
-        let mut key = Zeroizing::new([0u8; 32]);
-        key.copy_from_slice(&key_bytes);
-
-        let conn = connection::open_db(&app.data_dir, &key)?;
-        app.db = Some(conn);
-        app.master_key = Some(key);
-        app.touch_activity();
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    { Err("Touch ID not supported".into()) }
+    let unlocked = lifecycle::unlock_with_keystore(&app.data_dir, &SystemKeyStore)?;
+    app.set_unlocked(unlocked);
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -131,6 +133,7 @@ mod macos {
     }
 
     const SERVICE: &str = "com.vaultx.app";
+    // Historical account name; the item now holds the DEK (contract C6).
     const ACCOUNT: &str = "master-key";
     // kSecAccessControlBiometryCurrentSet = 1 << 3
     const BIOMETRY_CURRENT_SET: usize = 8;
@@ -152,7 +155,7 @@ mod macos {
         }
     }
 
-    /// Store master_key in Keychain with biometric access control
+    /// Store the DEK in Keychain with biometric access control
     pub fn store_key(key: &[u8]) -> Result<(), String> {
         unsafe {
             let service = CFString::new(SERVICE);
@@ -196,8 +199,8 @@ mod macos {
         }
     }
 
-    /// Read master_key from Keychain — triggers Touch ID prompt
-    pub fn read_key() -> Result<Vec<u8>, String> {
+    /// Read the DEK from Keychain — triggers Touch ID prompt
+    pub fn read_key() -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
         unsafe {
             let service = CFString::new(SERVICE);
             let account = CFString::new(ACCOUNT);
@@ -229,11 +232,11 @@ mod macos {
 
             // result is a retained CFDataRef
             let cf_data = CFData::wrap_under_create_rule(result as _);
-            Ok(cf_data.bytes().to_vec())
+            Ok(zeroize::Zeroizing::new(cf_data.bytes().to_vec()))
         }
     }
 
-    /// Remove master_key from Keychain
+    /// Remove the DEK from Keychain
     pub fn delete_key() -> Result<(), String> {
         unsafe {
             let service = CFString::new(SERVICE);

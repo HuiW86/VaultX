@@ -36,6 +36,7 @@ const en = {
   "lock.confirm_new_placeholder": "Confirm new password",
   "lock.recovery_key_required": "Recovery key is required",
   "lock.recovery_failed": "Recovery failed. Check your recovery key.",
+  "lock.recovery_touch_id_cleanup_failed": "Password reset. Touch ID could not be removed from the Keychain; turn it off and on again in Settings.",
   "lock.reset_password": "Reset Password",
   "lock.try_again_in": "Try again in {countdown}s",
   "lock.wait": "Wait {countdown}s",
@@ -215,6 +216,24 @@ const en = {
   "modal.confirm": "Confirm",
   "modal.cancel": "Cancel",
   "modal.close": "Close",
+
+  // Recovery kit (settings + missing-kit notice, contract C11)
+  "recovery_kit.settings_label": "Recovery kit",
+  "recovery_kit.missing_status": "Not set up",
+  "recovery_kit.regenerate": "Regenerate…",
+  "recovery_kit.confirm_title": "Regenerate recovery kit",
+  "recovery_kit.confirm_desc": "A new recovery key will be created. Any recovery kit you saved before will stop working.",
+  "recovery_kit.confirm": "Generate new kit",
+  "recovery_kit.new_title": "Save your new recovery kit",
+  "recovery_kit.new_desc": "Download it and keep it somewhere safe, away from this computer. It is shown only once.",
+  "recovery_kit.done": "Done",
+  "recovery_kit.failed": "Could not create a recovery kit. Try again.",
+  "recovery_kit.close_confirm_title": "Close without saving the kit?",
+  "recovery_kit.close_confirm_desc": "Your previous recovery kit no longer works. If you close now without downloading the new one, this key will not be shown again and you will have no working recovery kit.",
+  "recovery_kit.close_back": "Back to download",
+  "recovery_kit.close_anyway": "Close anyway",
+  "recovery_kit.banner": "Your vault has no valid recovery kit. If you forget your master password, you won't be able to get back in.",
+  "recovery_kit.banner_action": "Create recovery kit",
 
   // ErrorState
   "error.something_wrong": "Something went wrong",

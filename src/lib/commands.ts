@@ -85,6 +85,24 @@ export interface VaultxSettings {
 
 // -- API calls --
 
+export interface RecoverResult {
+  /** Recovery succeeded but the Touch ID Keychain item could not be removed. */
+  touch_id_cleanup_failed: boolean;
+}
+
+/** Recovery kit presence (contract C11). */
+export interface RecoveryKitStatus {
+  /** The vault currently has a usable recovery kit. */
+  present: boolean;
+  /** A kit can be generated now (false while the vault awaits its upgrade). */
+  can_generate: boolean;
+}
+
+export interface RecoveryKit {
+  recovery_key: string;
+  file_content: string;
+}
+
 export const api = {
   getAppStatus: () => invoke<AppStatus>("get_app_status"),
   setupVault: (password: string) => invoke<void>("setup_vault", { password }),
@@ -155,8 +173,8 @@ export const api = {
   unlockBiometric: () => invoke<void>("unlock_biometric"),
 
   // Recovery
-  generateRecoveryKit: () =>
-    invoke<{ recovery_key: string; file_content: string }>("generate_recovery_kit"),
+  generateRecoveryKit: () => invoke<RecoveryKit>("generate_recovery_kit"),
+  getRecoveryKitStatus: () => invoke<RecoveryKitStatus>("get_recovery_kit_status"),
   recoverWithKey: (recoveryKey: string, newPassword: string) =>
-    invoke<void>("recover_with_key", { recoveryKey, newPassword }),
+    invoke<RecoverResult>("recover_with_key", { recoveryKey, newPassword }),
 };

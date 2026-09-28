@@ -38,6 +38,7 @@ const zhCN: Translations = {
   "lock.confirm_new_placeholder": "确认新密码",
   "lock.recovery_key_required": "请输入恢复密钥",
   "lock.recovery_failed": "恢复失败，请检查恢复密钥。",
+  "lock.recovery_touch_id_cleanup_failed": "密码已重置，但未能从钥匙串移除 Touch ID 密钥；请在设置中关闭后重新开启 Touch ID。",
   "lock.reset_password": "重置密码",
   "lock.try_again_in": "{countdown}秒后重试",
   "lock.wait": "等待 {countdown}秒",
@@ -217,6 +218,24 @@ const zhCN: Translations = {
   "modal.confirm": "确认",
   "modal.cancel": "取消",
   "modal.close": "关闭",
+
+  // Recovery kit (settings + missing-kit notice, contract C11)
+  "recovery_kit.settings_label": "恢复包",
+  "recovery_kit.missing_status": "未设置",
+  "recovery_kit.regenerate": "重新生成…",
+  "recovery_kit.confirm_title": "重新生成恢复包",
+  "recovery_kit.confirm_desc": "将创建新的恢复密钥，之前保存的恢复包将全部失效。",
+  "recovery_kit.confirm": "生成新恢复包",
+  "recovery_kit.new_title": "保存新的恢复包",
+  "recovery_kit.new_desc": "请下载并保存在安全的地方，不要放在这台电脑上。恢复密钥只显示这一次。",
+  "recovery_kit.done": "完成",
+  "recovery_kit.failed": "无法创建恢复包，请重试。",
+  "recovery_kit.close_confirm_title": "不保存恢复包就关闭？",
+  "recovery_kit.close_confirm_desc": "之前的恢复包已失效。如果现在不下载新的恢复包就关闭，此密钥将不会再次显示，你将没有可用的恢复包。",
+  "recovery_kit.close_back": "返回下载",
+  "recovery_kit.close_anyway": "仍然关闭",
+  "recovery_kit.banner": "你的保险库目前没有有效的恢复包。如果忘记主密码，将无法找回。",
+  "recovery_kit.banner_action": "创建恢复包",
 
   // ErrorState
   "error.something_wrong": "出了点问题",

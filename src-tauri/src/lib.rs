@@ -2,6 +2,7 @@ mod commands;
 pub mod crypto;
 pub mod db;
 mod state;
+pub mod vault;
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -106,6 +107,7 @@ pub fn run() {
             // Recovery
             commands::recovery::generate_recovery_kit,
             commands::recovery::recover_with_key,
+            commands::recovery::get_recovery_kit_status,
         ])
         .on_window_event(|window, event| {
             // Auto-hide Quick Access when it loses focus

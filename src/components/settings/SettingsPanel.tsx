@@ -3,6 +3,8 @@ import { X } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { api, type VaultxSettings } from "../../lib/commands";
 import { useTranslation } from "../../i18n";
+import { useAppStore } from "../../stores/appStore";
+import { RecoveryKitDialog } from "./RecoveryKitDialog";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -15,6 +17,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const update = useSettingsStore((s) => s.update);
   const [touchIdAvailable, setTouchIdAvailable] = useState(false);
   const [touchIdLoading, setTouchIdLoading] = useState(false);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
+  const recoveryKit = useAppStore((s) => s.recoveryKit);
+  const refreshRecoveryKitStatus = useAppStore((s) => s.refreshRecoveryKitStatus);
   const { t } = useTranslation();
 
   const autoLockOptions = [
@@ -46,14 +51,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     api.isTouchIdAvailable().then(setTouchIdAvailable).catch(() => {});
   }, [loaded, load]);
 
+  useEffect(() => {
+    refreshRecoveryKitStatus();
+  }, [refreshRecoveryKitStatus]);
+
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Escape inside the recovery kit dialog closes only the dialog.
+      if (e.key === "Escape" && !recoveryDialogOpen) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, recoveryDialogOpen]);
 
   const handleChange = (key: keyof VaultxSettings, value: VaultxSettings[keyof VaultxSettings]) => {
     update({ [key]: value });
@@ -132,7 +142,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             }}
             disabled={!touchIdAvailable || touchIdLoading}
           />
+          {/* Recovery kit (contract C11) */}
+          <div className="h-10 flex items-center justify-between">
+            <span className="text-[var(--font-size-md)] text-[var(--color-text-primary)]">
+              {t("recovery_kit.settings_label")}
+              {recoveryKit && !recoveryKit.present && (
+                <span className="ml-[var(--spacing-sm)] text-[var(--font-size-xs)] text-[var(--color-warning)]">
+                  {t("recovery_kit.missing_status")}
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => setRecoveryDialogOpen(true)}
+              disabled={recoveryKit?.can_generate === false}
+              className="text-[var(--font-size-sm)] text-[var(--color-primary)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t("recovery_kit.regenerate")}
+            </button>
+          </div>
         </Section>
+        <RecoveryKitDialog open={recoveryDialogOpen} onClose={() => setRecoveryDialogOpen(false)} />
 
         {/* Appearance */}
         <Section title={t("settings.appearance")}>

@@ -25,6 +25,7 @@ export function LockScreen() {
   const retryAfterMs = useAppStore((s) => s.retryAfterMs);
   const unlock = useAppStore((s) => s.unlock);
   const clearError = useAppStore((s) => s.clearError);
+  const recover = useAppStore((s) => s.recover);
 
   // Check if Touch ID is enabled in settings
   useEffect(() => {
@@ -205,8 +206,11 @@ export function LockScreen() {
                 if (newPassword !== confirmNew) { setRecoveryError(t("setup.passwords_mismatch")); return; }
                 setRecoveryLoading(true);
                 try {
-                  await api.recoverWithKey(recoveryKey.trim(), newPassword);
-                  useAppStore.setState({ status: "unlocked", error: null });
+                  const result = await recover(recoveryKey.trim(), newPassword);
+                  if (result.touch_id_cleanup_failed) {
+                    const toastWindow = window as unknown as { __vaultx_toast?: (message: string, type: "error") => void };
+                    toastWindow.__vaultx_toast?.(t("lock.recovery_touch_id_cleanup_failed"), "error");
+                  }
                 } catch (e) {
                   setRecoveryError(typeof e === "string" ? e : t("lock.recovery_failed"));
                 } finally {

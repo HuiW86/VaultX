@@ -2,12 +2,9 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::encryption;
+use crate::crypto::encryption::{self, is_sensitive_field_type};
 use crate::db::queries::{self, EntrySummary, EntryWithFields, Field, FieldInput};
 use crate::state::AppState;
-
-// Field types that get AES-256-GCM encryption on top of SQLCipher
-const SENSITIVE_TYPES: &[&str] = &["password", "hidden", "card_number"];
 
 #[derive(Debug, Deserialize)]
 pub struct CreateEntryInput {
@@ -60,7 +57,7 @@ fn require_unlocked(app: &AppState) -> Result<(), String> {
 }
 
 fn encrypt_field_value(key: &[u8; 32], field_type: &str, plaintext: &str) -> Result<Vec<u8>, String> {
-    if SENSITIVE_TYPES.contains(&field_type) {
+    if is_sensitive_field_type(field_type) {
         encryption::encrypt(key, plaintext.as_bytes())
     } else {
         Ok(plaintext.as_bytes().to_vec())
@@ -68,7 +65,7 @@ fn encrypt_field_value(key: &[u8; 32], field_type: &str, plaintext: &str) -> Res
 }
 
 fn decrypt_field(key: &[u8; 32], field: &Field) -> Result<DecryptedField, String> {
-    let sensitive = SENSITIVE_TYPES.contains(&field.field_type.as_str());
+    let sensitive = is_sensitive_field_type(&field.field_type);
     let plaintext = if sensitive {
         let bytes = encryption::decrypt(key, &field.value)?;
         String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {e}"))?
@@ -92,7 +89,7 @@ pub fn create_entry(input: CreateEntryInput, state: State<'_, Mutex<AppState>>) 
     let app = state.lock().map_err(|_| "State lock poisoned".to_string())?;
     require_unlocked(&app)?;
     let db = app.db.as_ref().unwrap();
-    let key = app.master_key.as_ref().unwrap();
+    let key = app.dek.as_ref().unwrap();
 
     let fields: Result<Vec<FieldInput>, String> = input
         .fields
@@ -135,7 +132,7 @@ pub fn get_entry(entry_id: String, state: State<'_, Mutex<AppState>>) -> Result<
     let app = state.lock().map_err(|_| "State lock poisoned".to_string())?;
     require_unlocked(&app)?;
     let db = app.db.as_ref().unwrap();
-    let key = app.master_key.as_ref().unwrap();
+    let key = app.dek.as_ref().unwrap();
 
     let entry_with_fields = queries::get_entry(db, &entry_id)?;
     let decrypted_fields: Result<Vec<DecryptedField>, String> = entry_with_fields
@@ -174,7 +171,7 @@ pub fn update_entry(input: UpdateEntryInput, state: State<'_, Mutex<AppState>>) 
     let app = state.lock().map_err(|_| "State lock poisoned".to_string())?;
     require_unlocked(&app)?;
     let db = app.db.as_ref().unwrap();
-    let key = app.master_key.as_ref().unwrap();
+    let key = app.dek.as_ref().unwrap();
 
     // If fields are being updated, save old password values to history
     if let Some(ref new_fields) = input.fields {

@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import { StrengthMeter } from "../ui/StrengthMeter";
 import { useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
+import { downloadRecoveryKit } from "../../lib/recoveryKit";
 import { useTranslation } from "../../i18n";
 
 type Step = "password" | "recovery" | "done";
@@ -51,13 +52,7 @@ export function SetupWizard() {
   );
 
   const handleDownload = useCallback(() => {
-    const blob = new Blob([fileContent], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "VaultX-Recovery-Kit.txt";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadRecoveryKit(fileContent);
     setDownloaded(true);
   }, [fileContent]);
 

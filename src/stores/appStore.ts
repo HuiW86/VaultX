@@ -1,17 +1,34 @@
 import { create } from "zustand";
-import { api, type UnlockError } from "../lib/commands";
+import { api, type RecoverResult, type RecoveryKitStatus, type UnlockError } from "../lib/commands";
+
+/**
+ * Reset every store that caches decrypted entries, search results or
+ * settings. Used on lock and after a successful recovery (contract C9).
+ */
+export async function clearSessionCaches(): Promise<void> {
+  const { useVaultStore } = await import("./vaultStore");
+  const { useSearchStore } = await import("./searchStore");
+  const { useSettingsStore } = await import("./settingsStore");
+  useVaultStore.getState().reset();
+  useSearchStore.getState().reset();
+  useSettingsStore.getState().reset();
+}
 
 interface AppState {
   status: "loading" | "first_run" | "locked" | "unlocked" | "corrupted";
   corruptReason: string | null;
   error: string | null;
   retryAfterMs: number | null;
+  /** Last known recovery kit status of the unlocked vault (C11); null = unknown. */
+  recoveryKit: RecoveryKitStatus | null;
 
   init: () => Promise<void>;
   setup: (password: string) => Promise<void>;
   unlock: (password: string) => Promise<void>;
   lock: () => Promise<void>;
+  recover: (recoveryKey: string, newPassword: string) => Promise<RecoverResult>;
   clearError: () => void;
+  refreshRecoveryKitStatus: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -19,6 +36,7 @@ export const useAppStore = create<AppState>((set) => ({
   corruptReason: null,
   error: null,
   retryAfterMs: null,
+  recoveryKit: null,
 
   init: async () => {
     try {
@@ -64,12 +82,27 @@ export const useAppStore = create<AppState>((set) => ({
   lock: async () => {
     await api.lock();
     // Security: reset all stores to clear decrypted data
-    const { useVaultStore } = await import("./vaultStore");
-    const { useSettingsStore } = await import("./settingsStore");
-    useVaultStore.getState().reset();
-    useSettingsStore.getState().reset();
-    set({ status: "locked", error: null, retryAfterMs: null });
+    await clearSessionCaches();
+    set({ status: "locked", error: null, retryAfterMs: null, recoveryKit: null });
+  },
+
+  recover: async (recoveryKey: string, newPassword: string) => {
+    const result = await api.recoverWithKey(recoveryKey, newPassword);
+    // Drop anything cached before recovery; Touch ID was disabled by the backend.
+    await clearSessionCaches();
+    // The used kit is now invalid (C5); force a fresh status for the notice (C11).
+    set({ status: "unlocked", error: null, retryAfterMs: null, recoveryKit: null });
+    return result;
   },
 
   clearError: () => set({ error: null }),
+
+  refreshRecoveryKitStatus: async () => {
+    try {
+      const recoveryKit = await api.getRecoveryKitStatus();
+      set({ recoveryKit: recoveryKit ?? null });
+    } catch {
+      set({ recoveryKit: null });
+    }
+  },
 }));

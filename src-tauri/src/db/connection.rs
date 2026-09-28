@@ -2,27 +2,81 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
 use super::schema;
 
-const META_FILENAME: &str = ".vaultx-meta";
-const DB_FILENAME: &str = "vault.db";
+pub const META_FILENAME: &str = ".vaultx-meta";
+/// DB file of vaults created as v2 and of every v1 vault.
+pub const DB_FILENAME: &str = "vault.db";
+/// DB file produced by the v1→v2 migration (contract C8). The migration
+/// commits by atomically switching `.vaultx-meta` to point at this file.
+pub const MIGRATED_DB_FILENAME: &str = "vault.v2.db";
+/// Every DB filename `.vaultx-meta` may reference.
+pub const KNOWN_DB_FILENAMES: &[&str] = &[DB_FILENAME, MIGRATED_DB_FILENAME];
 const BUSY_TIMEOUT_MS: u32 = 5000;
 
+/// Legacy meta version: the password-derived key encrypted the DB directly.
+pub const META_VERSION_V1: u32 = 1;
+/// Current meta version: DEK/KEK hierarchy.
+pub const META_VERSION_V2: u32 = 2;
+
 /// Metadata file stored alongside the encrypted DB.
-/// Contains KDF params needed to derive the key before opening the DB.
-#[derive(Debug, Serialize, Deserialize)]
+/// Contains KDF params and the wrapped DEK needed before opening the DB.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultMeta {
     pub version: u32,
     pub kdf: KdfConfig,
     pub created_at: String,
+    /// DB filename relative to the data dir; must be one of KNOWN_DB_FILENAMES.
     pub db_path: String,
-    /// Base64-encoded AES-GCM encrypted master_key (encrypted by recovery key)
+    /// v1 only: base64 AES-GCM blob of the legacy master key, encrypted by
+    /// the recovery KEK. Never written by v2 code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_blob: Option<String>,
+    /// v2: base64 DEK wrapped by the password KEK (purpose `vaultx:dek:password`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dek_wrapped_by_password: Option<String>,
+    /// v2: base64 DEK wrapped by the recovery KEK (purpose `vaultx:dek:recovery`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dek_wrapped_by_recovery: Option<String>,
+    /// v2: set in the same atomic meta write that commits a recovery or a
+    /// v1→v2 migration. While set, the Keychain copy must be deleted and
+    /// `touch_id_enabled` cleared before Touch ID may be used again (C6).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub keychain_invalidation_pending: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+impl VaultMeta {
+    /// Build a fresh v2 meta.
+    pub fn new_v2(salt: &[u8], db_path: &str, created_at: String, dek_wrapped_by_password: String) -> Self {
+        VaultMeta {
+            version: META_VERSION_V2,
+            kdf: KdfConfig::argon2id(salt),
+            created_at,
+            db_path: db_path.to_string(),
+            recovery_blob: None,
+            dek_wrapped_by_password: Some(dek_wrapped_by_password),
+            dek_wrapped_by_recovery: None,
+            keychain_invalidation_pending: false,
+        }
+    }
+
+    /// Validated DB filename referenced by this meta.
+    pub fn db_filename(&self) -> Result<&'static str, String> {
+        KNOWN_DB_FILENAMES
+            .iter()
+            .copied()
+            .find(|n| *n == self.db_path)
+            .ok_or_else(|| "Meta references an unknown database file".to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KdfConfig {
     pub algorithm: String,
     pub params: KdfParams,
@@ -30,7 +84,17 @@ pub struct KdfConfig {
     pub salt: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl KdfConfig {
+    pub fn argon2id(salt: &[u8]) -> Self {
+        KdfConfig {
+            algorithm: "argon2id".to_string(),
+            params: KdfParams { m_cost: 19456, t_cost: 2, p_cost: 1 },
+            salt: salt.to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KdfParams {
     pub m_cost: u32,
     pub t_cost: u32,
@@ -86,43 +150,84 @@ fn dirs_next() -> Option<PathBuf> {
     }
 }
 
-/// Check file status: both files present, neither, or inconsistent.
+/// Check file status: meta and the DB it references present, neither, or inconsistent.
 pub fn check_file_status(base_dir: &Path) -> AppFileStatus {
-    let meta_path = base_dir.join(META_FILENAME);
-    let db_path = base_dir.join(DB_FILENAME);
-    let meta_exists = meta_path.exists();
-    let db_exists = db_path.exists();
+    let meta_exists = base_dir.join(META_FILENAME).exists();
+    let any_db_exists = KNOWN_DB_FILENAMES.iter().any(|n| base_dir.join(n).exists());
 
-    match (meta_exists, db_exists) {
-        (false, false) => AppFileStatus::FirstRun,
-        (true, true) => {
-            // Validate meta file is readable
-            match read_meta(base_dir) {
-                Ok(_) => AppFileStatus::Ready,
-                Err(e) => AppFileStatus::Corrupted {
-                    reason: format!("Meta file unreadable: {e}"),
-                },
+    if !meta_exists {
+        return if any_db_exists {
+            AppFileStatus::Corrupted {
+                reason: "Database exists but meta file is missing".to_string(),
+            }
+        } else {
+            AppFileStatus::FirstRun
+        };
+    }
+
+    let meta = match read_meta(base_dir) {
+        Ok(m) => m,
+        Err(e) => {
+            return AppFileStatus::Corrupted {
+                reason: format!("Meta file unreadable: {e}"),
             }
         }
-        (true, false) => AppFileStatus::Corrupted {
+    };
+    match meta.db_filename() {
+        Ok(name) if base_dir.join(name).exists() => AppFileStatus::Ready,
+        Ok(_) => AppFileStatus::Corrupted {
             reason: "Meta file exists but database is missing".to_string(),
         },
-        (false, true) => AppFileStatus::Corrupted {
-            reason: "Database exists but meta file is missing".to_string(),
-        },
+        Err(e) => AppFileStatus::Corrupted { reason: e },
     }
 }
 
-/// Write meta file atomically (write tmp → rename).
+/// Write meta file atomically (write tmp → fsync → rename → fsync dir). C3.
 pub fn write_meta(base_dir: &Path, meta: &VaultMeta) -> Result<(), String> {
+    write_meta_with_hook(base_dir, meta, &|_| Ok(()))
+}
+
+/// Same as `write_meta`, calling `hook("meta:tmp_written")` between the temp
+/// write and the committing rename (used for fault injection).
+pub fn write_meta_with_hook(
+    base_dir: &Path,
+    meta: &VaultMeta,
+    hook: &dyn Fn(&'static str) -> Result<(), String>,
+) -> Result<(), String> {
     let meta_path = base_dir.join(META_FILENAME);
     let tmp_path = base_dir.join(format!("{META_FILENAME}.tmp"));
 
     let json = serde_json::to_string_pretty(meta)
         .map_err(|e| format!("Failed to serialize meta: {e}"))?;
-    fs::write(&tmp_path, &json).map_err(|e| format!("Failed to write temp meta: {e}"))?;
+    {
+        use std::io::Write;
+        let mut f = fs::File::create(&tmp_path).map_err(|e| format!("Failed to write temp meta: {e}"))?;
+        f.write_all(json.as_bytes()).map_err(|e| format!("Failed to write temp meta: {e}"))?;
+        f.sync_all().map_err(|e| format!("Failed to sync temp meta: {e}"))?;
+    }
+    hook("meta:tmp_written")?;
     fs::rename(&tmp_path, &meta_path).map_err(|e| format!("Failed to rename meta: {e}"))?;
-    Ok(())
+    hook("meta:renamed")?;
+    // The rename is only durable once the directory is synced; callers must
+    // not rely on the new meta (e.g. delete the previous DB) if this fails.
+    sync_dir(base_dir)
+}
+
+/// Directory fsync so that creates, renames and unlinks in `dir` are durable.
+/// Errors are returned: a caller about to perform a destructive step must
+/// know the preceding commit may not survive a power loss (contract C3).
+pub fn sync_dir(dir: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        fs::File::open(dir)
+            .and_then(|d| d.sync_all())
+            .map_err(|e| format!("Failed to sync data directory: {e}"))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
 }
 
 /// Read and parse the meta file.
@@ -133,7 +238,7 @@ pub fn read_meta(base_dir: &Path) -> Result<VaultMeta, String> {
     serde_json::from_str(&json).map_err(|e| format!("Failed to parse meta file: {e}"))
 }
 
-/// Initialize a new encrypted database.
+/// Initialize a new encrypted database at `vault.db`.
 /// Creates the DB file, sets SQLCipher key, runs migrations, returns connection.
 pub fn init_db(base_dir: &Path, key: &[u8; 32]) -> Result<Connection, String> {
     let db_path = base_dir.join(DB_FILENAME);
@@ -148,16 +253,33 @@ pub fn init_db(base_dir: &Path, key: &[u8; 32]) -> Result<Connection, String> {
     Ok(conn)
 }
 
-/// Open an existing encrypted database.
+/// Path of the vault DB: the file referenced by `.vaultx-meta`, or
+/// `vault.db` when no meta exists yet (e.g. during setup).
+pub fn db_file_path(base_dir: &Path) -> Result<PathBuf, String> {
+    if base_dir.join(META_FILENAME).exists() {
+        let meta = read_meta(base_dir)?;
+        Ok(base_dir.join(meta.db_filename()?))
+    } else {
+        Ok(base_dir.join(DB_FILENAME))
+    }
+}
+
+/// Open the existing encrypted vault database.
 pub fn open_db(base_dir: &Path, key: &[u8; 32]) -> Result<Connection, String> {
-    let db_path = base_dir.join(DB_FILENAME);
+    open_db_file(&db_file_path(base_dir)?, key)
+}
+
+/// Open an encrypted database file and verify the key.
+pub fn open_db_file(db_path: &Path, key: &[u8; 32]) -> Result<Connection, String> {
     if !db_path.exists() {
         return Err("Database file not found".to_string());
     }
 
-    let conn = Connection::open(&db_path)
+    let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {e}"))?;
-    configure_connection(&conn, key)?;
+    // With a wrong key the first statement touching the file fails.
+    configure_connection(&conn, key)
+        .map_err(|_| "Wrong encryption key or corrupted database".to_string())?;
 
     // Verify the key is correct by running a simple query
     conn.execute_batch("SELECT count(*) FROM sqlite_master;")
@@ -168,9 +290,10 @@ pub fn open_db(base_dir: &Path, key: &[u8; 32]) -> Result<Connection, String> {
 
 /// Configure SQLCipher connection: set key, page size, busy timeout.
 fn configure_connection(conn: &Connection, key: &[u8; 32]) -> Result<(), String> {
-    let hex_key = hex_encode(key);
-    conn.execute_batch(&format!("PRAGMA key = \"x'{hex_key}'\";"))
-        .map_err(|e| format!("Failed to set encryption key: {e}"))?;
+    let pragma = Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex_encode(key).as_str()));
+    // Never include the underlying error: it could echo the statement text (C4).
+    conn.execute_batch(&pragma)
+        .map_err(|_| "Failed to set encryption key".to_string())?;
     conn.execute_batch("PRAGMA cipher_page_size = 4096;")
         .map_err(|e| format!("Failed to set cipher page size: {e}"))?;
     conn.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS as u64))
@@ -180,18 +303,34 @@ fn configure_connection(conn: &Connection, key: &[u8; 32]) -> Result<(), String>
     Ok(())
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+/// Hex-encode key material into a zeroizing string.
+pub fn hex_encode(bytes: &[u8]) -> Zeroizing<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = Zeroizing::new(String::with_capacity(bytes.len() * 2));
+    for b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
+}
+
+/// Remove a DB file together with its SQLite side files.
+pub fn remove_db_files(db_path: &Path) {
+    let _ = fs::remove_file(db_path);
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut p = db_path.as_os_str().to_owned();
+        p.push(suffix);
+        let _ = fs::remove_file(PathBuf::from(p));
+    }
 }
 
 /// Remove all vault files (used for cleanup after interrupted setup).
 pub fn cleanup_files(base_dir: &Path) {
-    let _ = fs::remove_file(base_dir.join(DB_FILENAME));
+    for name in KNOWN_DB_FILENAMES {
+        remove_db_files(&base_dir.join(name));
+    }
     let _ = fs::remove_file(base_dir.join(META_FILENAME));
     let _ = fs::remove_file(base_dir.join(format!("{META_FILENAME}.tmp")));
-    // WAL and SHM files from SQLite
-    let _ = fs::remove_file(base_dir.join(format!("{DB_FILENAME}-wal")));
-    let _ = fs::remove_file(base_dir.join(format!("{DB_FILENAME}-shm")));
 }
 
 #[cfg(test)]
@@ -233,6 +372,9 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
             recovery_blob: None,
+            dek_wrapped_by_password: None,
+            dek_wrapped_by_recovery: None,
+            keychain_invalidation_pending: false,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -281,6 +423,9 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
             recovery_blob: None,
+            dek_wrapped_by_password: None,
+            dek_wrapped_by_recovery: None,
+            keychain_invalidation_pending: false,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -290,6 +435,41 @@ mod tests {
             }
             other => panic!("Expected Corrupted, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sync_dir_reports_errors() {
+        let dir = TempDir::new().unwrap();
+        assert!(sync_dir(dir.path()).is_ok());
+        let missing = dir.path().join("does-not-exist");
+        let err = sync_dir(&missing).unwrap_err();
+        assert!(err.starts_with("Failed to sync data directory"));
+    }
+
+    #[test]
+    fn write_meta_fails_when_directory_sync_fails() {
+        let dir = TempDir::new().unwrap();
+        let meta = VaultMeta::new_v2(&[1], "vault.db", "t".into(), "w".into());
+        // Simulate a failing directory fsync right after the rename.
+        let fail_after_rename = |p: &'static str| -> Result<(), String> {
+            if p == "meta:renamed" { Err("sync failed".into()) } else { Ok(()) }
+        };
+        assert!(write_meta_with_hook(dir.path(), &meta, &fail_after_rename).is_err());
+    }
+
+    #[test]
+    fn hex_encode_matches_expected() {
+        assert_eq!(hex_encode(&[0x00, 0xab, 0xff]).as_str(), "00abff");
+    }
+
+    #[test]
+    fn unknown_db_path_is_rejected() {
+        let dir = TempDir::new().unwrap();
+        let mut meta = VaultMeta::new_v2(&[1], "vault.db", "t".into(), "w".into());
+        meta.db_path = "../elsewhere.db".into();
+        write_meta(dir.path(), &meta).unwrap();
+        assert!(matches!(check_file_status(dir.path()), AppFileStatus::Corrupted { .. }));
+        assert!(open_db(dir.path(), &test_key()).is_err());
     }
 
     #[test]
@@ -307,6 +487,9 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             db_path: "vault.db".to_string(),
             recovery_blob: None,
+            dek_wrapped_by_password: None,
+            dek_wrapped_by_recovery: None,
+            keychain_invalidation_pending: false,
         };
         write_meta(dir.path(), &meta).unwrap();
 
