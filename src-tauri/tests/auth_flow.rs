@@ -24,6 +24,9 @@ fn setup_full_vault(dir: &std::path::Path) -> [u8; 32] {
         created_at: chrono::Utc::now().to_rfc3339(),
         db_path: "vault.db".to_string(),
         recovery_blob: None,
+        dek_wrapped_by_password: None,
+        dek_wrapped_by_recovery: None,
+        keychain_invalidation_pending: false,
     };
     connection::write_meta(dir, &meta).unwrap();
 
@@ -73,6 +76,9 @@ fn unlock_with_correct_password() {
         created_at: chrono::Utc::now().to_rfc3339(),
         db_path: "vault.db".to_string(),
         recovery_blob: None,
+        dek_wrapped_by_password: None,
+        dek_wrapped_by_recovery: None,
+        keychain_invalidation_pending: false,
     };
     connection::write_meta(dir.path(), &meta).unwrap();
 
@@ -103,6 +109,9 @@ fn unlock_with_wrong_password_fails() {
         created_at: chrono::Utc::now().to_rfc3339(),
         db_path: "vault.db".to_string(),
         recovery_blob: None,
+        dek_wrapped_by_password: None,
+        dek_wrapped_by_recovery: None,
+        keychain_invalidation_pending: false,
     }).unwrap();
 
     let meta = connection::read_meta(dir.path()).unwrap();

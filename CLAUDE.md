@@ -19,10 +19,10 @@ Local-first password manager for macOS. Tauri 2.0 + React + TypeScript + Rust.
 - Format: `version(1) || nonce(12) || ciphertext || tag(16)`
 
 ### Contracts (authoritative)
-- Vault key lifecycle (master key, salt, rekey, recovery blob, Keychain): `docs/contracts/vault-key-lifecycle.md` — read before touching auth/recovery/security commands; update it first when changing that behavior
+- Vault key lifecycle (DEK/KEK, salt, wrapped keys, recovery kit, migration, Keychain): `docs/contracts/vault-key-lifecycle.md` — read before touching auth/recovery/security commands; update it first when changing that behavior
 
 ### Security Rules
-- `master_key` wrapped in `Zeroizing<[u8; 32]>`, zeroized on lock/exit
+- `dek` (vault data key) wrapped in `Zeroizing<[u8; 32]>`, zeroized on lock/exit; password/recovery keys only wrap the DEK
 - Lock clears: Rust state (zeroize + close DB) + React stores (reset) + reveal timers + clipboard
 - No sensitive data in console.log, DOM attributes, or error messages
 - Clipboard exclusively owned by Rust (no JS timers)
@@ -50,7 +50,8 @@ src-tauri/src/
     settings.rs  — get_settings/save_settings (.vaultx-settings JSON)
     security.rs  — Touch ID (Keychain + LAContext via objc2)
     recovery.rs  — generate_recovery_kit, recover_with_key
-  state.rs       — AppState (db, master_key, last_activity)
+  vault/         — key lifecycle: create/unlock/recovery/migration/Keychain (see contract)
+  state.rs       — AppState (db, dek, legacy, last_activity)
 src-tauri/data/  — EFF diceware word list (embedded at compile time)
 
 src/

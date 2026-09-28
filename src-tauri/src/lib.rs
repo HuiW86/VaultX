@@ -2,6 +2,7 @@ mod commands;
 pub mod crypto;
 pub mod db;
 mod state;
+pub mod vault;
 
 use std::sync::Mutex;
 use std::time::Duration;
