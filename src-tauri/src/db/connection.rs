@@ -207,21 +207,26 @@ pub fn write_meta_with_hook(
     }
     hook("meta:tmp_written")?;
     fs::rename(&tmp_path, &meta_path).map_err(|e| format!("Failed to rename meta: {e}"))?;
-    sync_dir(base_dir);
-    Ok(())
+    hook("meta:renamed")?;
+    // The rename is only durable once the directory is synced; callers must
+    // not rely on the new meta (e.g. delete the previous DB) if this fails.
+    sync_dir(base_dir)
 }
 
-/// Best-effort directory fsync so a rename is durable before later steps.
-pub fn sync_dir(dir: &Path) {
+/// Directory fsync so that creates, renames and unlinks in `dir` are durable.
+/// Errors are returned: a caller about to perform a destructive step must
+/// know the preceding commit may not survive a power loss (contract C3).
+pub fn sync_dir(dir: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
-        if let Ok(d) = fs::File::open(dir) {
-            let _ = d.sync_all();
-        }
+        fs::File::open(dir)
+            .and_then(|d| d.sync_all())
+            .map_err(|e| format!("Failed to sync data directory: {e}"))
     }
     #[cfg(not(unix))]
     {
         let _ = dir;
+        Ok(())
     }
 }
 
@@ -430,6 +435,26 @@ mod tests {
             }
             other => panic!("Expected Corrupted, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sync_dir_reports_errors() {
+        let dir = TempDir::new().unwrap();
+        assert!(sync_dir(dir.path()).is_ok());
+        let missing = dir.path().join("does-not-exist");
+        let err = sync_dir(&missing).unwrap_err();
+        assert!(err.starts_with("Failed to sync data directory"));
+    }
+
+    #[test]
+    fn write_meta_fails_when_directory_sync_fails() {
+        let dir = TempDir::new().unwrap();
+        let meta = VaultMeta::new_v2(&[1], "vault.db", "t".into(), "w".into());
+        // Simulate a failing directory fsync right after the rename.
+        let fail_after_rename = |p: &'static str| -> Result<(), String> {
+            if p == "meta:renamed" { Err("sync failed".into()) } else { Ok(()) }
+        };
+        assert!(write_meta_with_hook(dir.path(), &meta, &fail_after_rename).is_err());
     }
 
     #[test]

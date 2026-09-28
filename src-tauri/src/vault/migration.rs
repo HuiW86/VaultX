@@ -7,11 +7,17 @@
 //! 2. Shadow complete, re-encrypted and verified; v1 meta still current.
 //!    Same as 1 on restart (the shadow is rebuilt next time).
 //! 3. Commit: one atomic rename of `.vaultx-meta` to a v2 meta that points to
-//!    `vault.v2.db` and wraps the new DEK with the password KEK.
-//! 4. Post-commit: `vault.db` is deleted (also done by `reconcile` if the
-//!    process dies first).
+//!    `vault.v2.db` and wraps the new DEK with the password KEK. The shadow's
+//!    directory entry is fsynced before, and the directory after, the rename;
+//!    any sync error aborts the flow with `vault.db` kept.
+//! 4. Post-commit: `vault.db` is deleted only once the v2 meta is confirmed
+//!    durable and on disk and the new DB reopens with the DEK
+//!    (`remove_superseded_db`). If anything fails, `vault.db` is kept and the
+//!    next keyed open (password, Touch ID, recovery) retries the removal.
+//!    `reconcile` never deletes it, since it has no key to verify the new DB.
 //!
-//! The original DB is never modified.
+//! The original DB is never modified. The whole flow runs under the
+//! cross-process `VaultLock` (C10).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -20,10 +26,11 @@ use std::path::Path;
 use rusqlite::{params, Connection};
 use zeroize::Zeroizing;
 
+use super::lock::VaultLock;
 use super::FaultHook;
 use crate::crypto::{encryption, key_derivation, key_wrap};
 use crate::db::connection::{
-    self, VaultMeta, DB_FILENAME, META_VERSION_V1, MIGRATED_DB_FILENAME,
+    self, VaultMeta, DB_FILENAME, META_VERSION_V1, META_VERSION_V2, MIGRATED_DB_FILENAME,
 };
 
 /// Row counts of every table that holds user data.
@@ -165,8 +172,21 @@ fn reencrypt(conn: &mut Connection, old_key: &[u8; 32], new_key: &[u8; 32]) -> R
 
 /// Migrate a v1 vault to v2. `legacy_key` must open the v1 DB and decrypt
 /// its fields; `password` becomes the password wrapping the new DEK.
-/// Returns the new DEK once the migration has committed.
+/// Returns the new DEK once the migration has committed and the legacy DB
+/// has been removed. Takes the vault lock.
 pub fn migrate_v1(
+    dir: &Path,
+    legacy_key: &[u8; 32],
+    password: &[u8],
+    hook: FaultHook,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    let lock = VaultLock::acquire(dir)?;
+    migrate_v1_locked(&lock, dir, legacy_key, password, hook)
+}
+
+/// `migrate_v1` for callers already holding the vault lock.
+pub(crate) fn migrate_v1_locked(
+    lock: &VaultLock,
     dir: &Path,
     legacy_key: &[u8; 32],
     password: &[u8],
@@ -212,6 +232,8 @@ pub fn migrate_v1(
     fs::File::open(&shadow_path)
         .and_then(|f| f.sync_all())
         .map_err(|e| format!("Failed to sync migration database: {e}"))?;
+    // The shadow's directory entry must be durable before meta points to it.
+    connection::sync_dir(dir)?;
 
     // State 2: verify the shadow reopens and every value decrypts to the original.
     {
@@ -236,10 +258,61 @@ pub fn migrate_v1(
     let mut new_meta = VaultMeta::new_v2(&salt, MIGRATED_DB_FILENAME, meta.created_at.clone(), wrapped);
     // The Keychain may hold the legacy key; it must be removed (C6).
     new_meta.keychain_invalidation_pending = true;
+    // Errors here (including a failed directory fsync after the rename)
+    // abort with `vault.db` untouched.
     connection::write_meta_with_hook(dir, &new_meta, hook)?;
     hook("migrate:committed")?;
 
-    // State 4: drop the legacy DB (reconcile does the same after a crash).
-    connection::remove_db_files(&src_path);
+    // State 4: drop the legacy DB, but only after re-verifying the commit.
+    let on_disk = connection::read_meta(dir)?;
+    if on_disk.version != META_VERSION_V2
+        || on_disk.db_path != MIGRATED_DB_FILENAME
+        || on_disk.dek_wrapped_by_password != new_meta.dek_wrapped_by_password
+    {
+        return Err("Migration commit could not be confirmed; the original database was kept".to_string());
+    }
+    drop(
+        connection::open_db(dir, &dek)
+            .map_err(|_| "Migrated database could not be reopened; the original database was kept".to_string())?,
+    );
+    hook("migrate:before_legacy_delete")?;
+    if !remove_superseded_db(lock, dir, &dek) {
+        log::warn!("Legacy database kept after migration; it will be removed on a later unlock");
+    }
     Ok(dek)
+}
+
+/// Remove the legacy `vault.db` superseded by a committed migration. Runs
+/// only when it is provably safe (F1): the directory syncs (so the committed
+/// meta is durable), the on-disk meta is v2 and references `vault.v2.db`,
+/// and that DB opens with `dek`. Returns true when no legacy DB remains.
+/// Never fails the caller: on any doubt the legacy DB is simply kept.
+pub(crate) fn remove_superseded_db(_lock: &VaultLock, dir: &Path, dek: &[u8; 32]) -> bool {
+    let legacy_path = dir.join(DB_FILENAME);
+    if !legacy_path.exists() {
+        return true;
+    }
+    let safe = (|| -> Result<bool, String> {
+        connection::sync_dir(dir)?;
+        let meta = connection::read_meta(dir)?;
+        if meta.version != META_VERSION_V2 || meta.db_filename()? != MIGRATED_DB_FILENAME {
+            return Ok(false);
+        }
+        drop(connection::open_db(dir, dek)?);
+        Ok(true)
+    })();
+    match safe {
+        Ok(true) => {
+            connection::remove_db_files(&legacy_path);
+            if let Err(e) = connection::sync_dir(dir) {
+                log::warn!("Legacy database removed but directory sync failed: {e}");
+            }
+            !legacy_path.exists()
+        }
+        Ok(false) => false,
+        Err(e) => {
+            log::warn!("Keeping legacy database: {e}");
+            false
+        }
+    }
 }

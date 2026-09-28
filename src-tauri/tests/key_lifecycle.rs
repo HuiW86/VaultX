@@ -611,3 +611,97 @@ fn meta_and_errors_contain_no_secrets() {
     let err = key_wrap::unwrap_dek(&[0u8; 32], "!!notbase64", key_wrap::PURPOSE_PASSWORD).unwrap_err();
     assert_eq!(err, "Unable to unwrap vault key");
 }
+
+// ---------- F1: durable commit before deleting the legacy DB (C3, C8) ----------
+
+#[test]
+fn migration_keeps_legacy_db_when_directory_sync_fails_after_commit() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    // `meta:renamed` fires between the committing rename and the directory
+    // fsync; an error there is what a failing fsync looks like to the flow.
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir.path(), &legacy, OLD_PW, &sync_fails).is_err());
+    assert!(dir.path().join(connection::DB_FILENAME).exists(), "legacy DB must be kept");
+    assert!(dir.path().join(connection::MIGRATED_DB_FILENAME).exists());
+
+    // reconcile has no key: it must not remove the legacy DB either.
+    lifecycle::reconcile(dir.path()).unwrap();
+    assert!(dir.path().join(connection::DB_FILENAME).exists());
+
+    // A keyed open verifies the new DB and only then removes the legacy one.
+    assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
+    assert!(!dir.path().join(connection::DB_FILENAME).exists());
+}
+
+#[test]
+fn migration_keeps_legacy_db_when_new_db_does_not_reopen() {
+    let dir = TempDir::new().unwrap();
+    let (_, _, legacy) = make_v1_vault(dir.path());
+    let shadow = dir.path().join(connection::MIGRATED_DB_FILENAME);
+    let corrupt_after_commit = |p: &'static str| -> Result<(), String> {
+        if p == "migrate:committed" {
+            fs::write(&shadow, vec![0u8; 8192]).unwrap();
+            let _ = fs::remove_file(dir.path().join("vault.v2.db-wal"));
+        }
+        Ok(())
+    };
+    let err = migration::migrate_v1(dir.path(), &legacy, OLD_PW, &corrupt_after_commit).unwrap_err();
+    assert!(err.contains("original database was kept"));
+    assert!(dir.path().join(connection::DB_FILENAME).exists(), "legacy DB must be kept");
+
+    // Later unlocks cannot open the new DB and therefore never delete the old one.
+    let ks = MemoryKeyStore::new();
+    assert!(lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults).is_err());
+    assert!(dir.path().join(connection::DB_FILENAME).exists());
+}
+
+// ---------- F2: cross-process lock (C10) ----------
+
+#[test]
+fn concurrent_reconcile_cannot_delete_shadow_during_migration() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let shadow = dir.path().join(connection::MIGRATED_DB_FILENAME);
+    let other = RefCell::new(None);
+
+    // While "instance A" is between shadow verification and commit,
+    // "instance B" starts a flow that reconciles (and would delete the shadow).
+    let hook = |p: &'static str| -> Result<(), String> {
+        if p == "migrate:verified" {
+            let path = dir.path().to_path_buf();
+            *other.borrow_mut() = Some(std::thread::spawn(move || lifecycle::reconcile(&path)));
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(shadow.exists(), "B must not touch the shadow while A holds the lock");
+        }
+        Ok(())
+    };
+    migration::migrate_v1(dir.path(), &legacy, OLD_PW, &hook).unwrap();
+    other.into_inner().unwrap().join().unwrap().unwrap();
+
+    assert!(shadow.exists());
+    let meta = connection::read_meta(dir.path()).unwrap();
+    assert_eq!(meta.db_path, connection::MIGRATED_DB_FILENAME);
+    assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
+}
+
+#[test]
+fn flows_wait_for_the_vault_lock() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _) = make_v2_vault(dir.path());
+    let held = vaultx_lib::vault::lock::VaultLock::acquire(dir.path()).unwrap();
+    let path = dir.path().to_path_buf();
+    let started = std::time::Instant::now();
+    let unlocker = std::thread::spawn(move || {
+        let ks = MemoryKeyStore::new();
+        let u = lifecycle::unlock_with_password(&path, OLD_PW, &ks, &no_faults).map_err(|e| format!("{e:?}"))?;
+        migration::collect_plaintexts(&u.conn, &u.key).map(|_| std::time::Instant::now())
+    });
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    drop(held);
+    let finished = unlocker.join().unwrap().unwrap();
+    assert!(finished.duration_since(started) >= std::time::Duration::from_millis(300));
+    assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
+}

@@ -7,6 +7,7 @@
 
 pub mod keystore;
 pub mod lifecycle;
+pub mod lock;
 pub mod migration;
 pub mod recovery_key;
 

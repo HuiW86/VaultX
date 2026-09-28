@@ -7,6 +7,8 @@
 //! - Every flow has exactly one commit point (an atomic meta rename). Before it
 //!   the previous credentials work; after it the new ones do. Flows perform no
 //!   destructive cleanup on error; stale artifacts are removed by `reconcile`.
+//! - Every public flow holds the cross-process `VaultLock` for its whole
+//!   duration (C10). Internals that expect the lock take `&VaultLock`.
 
 use std::path::Path;
 
@@ -15,12 +17,13 @@ use rusqlite::Connection;
 use zeroize::Zeroizing;
 
 use super::keystore::KeyStore;
+use super::lock::VaultLock;
 use super::{migration, recovery_key, FaultHook};
 use crate::commands::settings::{read_settings, write_settings};
 use crate::crypto::{encryption, key_derivation, key_wrap};
 use crate::db::connection::{
     self, AppFileStatus, KdfConfig, VaultMeta, DB_FILENAME, KNOWN_DB_FILENAMES, META_FILENAME,
-    META_VERSION_V1, META_VERSION_V2,
+    META_VERSION_V1, META_VERSION_V2, MIGRATED_DB_FILENAME,
 };
 use crate::db::queries;
 
@@ -73,8 +76,16 @@ pub struct RecoverOutcome {
 
 /// Remove artifacts left by an interrupted flow. Safe to call at any time:
 /// it never removes the DB referenced by a readable meta, and removes other
-/// DB files only when that referenced DB exists.
+/// DB files only when that referenced DB exists. The legacy `vault.db`
+/// superseded by a committed migration is *not* removed here (there is no key
+/// to prove the new DB opens); `migration::remove_superseded_db` does that
+/// after a keyed open (F1/C8).
 pub fn reconcile(dir: &Path) -> Result<(), String> {
+    let lock = VaultLock::acquire(dir)?;
+    reconcile_locked(&lock, dir)
+}
+
+fn reconcile_locked(_lock: &VaultLock, dir: &Path) -> Result<(), String> {
     let _ = std::fs::remove_file(dir.join(format!("{META_FILENAME}.tmp")));
     if !dir.join(META_FILENAME).exists() {
         return Ok(());
@@ -89,6 +100,9 @@ pub fn reconcile(dir: &Path) -> Result<(), String> {
         return Ok(());
     }
     for name in KNOWN_DB_FILENAMES.iter().filter(|n| **n != current) {
+        if current == MIGRATED_DB_FILENAME && *name == DB_FILENAME {
+            continue; // Superseded legacy DB: removed only after a keyed open.
+        }
         connection::remove_db_files(&dir.join(name));
     }
     Ok(())
@@ -96,6 +110,7 @@ pub fn reconcile(dir: &Path) -> Result<(), String> {
 
 /// Create a new v2 vault protected by `password`.
 pub fn create_vault(dir: &Path, password: &[u8]) -> Result<Unlocked, String> {
+    let _lock = VaultLock::acquire(dir)?;
     match connection::check_file_status(dir) {
         AppFileStatus::FirstRun => {}
         _ => return Err("Vault already exists".to_string()),
@@ -134,19 +149,20 @@ pub fn unlock_with_password(
     keystore: &dyn KeyStore,
     hook: FaultHook,
 ) -> Result<Unlocked, UnlockFailure> {
-    reconcile(dir).map_err(UnlockFailure::Other)?;
+    let lock = VaultLock::acquire(dir).map_err(UnlockFailure::Other)?;
+    reconcile_locked(&lock, dir).map_err(UnlockFailure::Other)?;
     let meta = connection::read_meta(dir).map_err(UnlockFailure::Other)?;
 
     match meta.version {
-        META_VERSION_V2 => unlock_v2(dir, &meta, password, keystore),
+        META_VERSION_V2 => unlock_v2(&lock, dir, &meta, password, keystore),
         META_VERSION_V1 => {
             let legacy_key = key_derivation::derive_key(password, &meta.kdf.salt)
                 .map_err(UnlockFailure::Other)?;
             drop(connection::open_db(dir, &legacy_key).map_err(|_| UnlockFailure::WrongCredential)?);
 
-            match migration::migrate_v1(dir, &legacy_key, password, hook) {
+            match migration::migrate_v1_locked(&lock, dir, &legacy_key, password, hook) {
                 Ok(dek) => {
-                    if let Err(e) = finish_keychain_invalidation(dir, keystore) {
+                    if let Err(e) = finish_keychain_invalidation_locked(&lock, dir, keystore) {
                         log::warn!("Keychain invalidation after migration pending: {e}");
                     }
                     let conn = connection::open_db(dir, &dek).map_err(UnlockFailure::Other)?;
@@ -156,7 +172,7 @@ pub fn unlock_with_password(
                     // The migration may have failed after its commit point.
                     let meta = connection::read_meta(dir).map_err(UnlockFailure::Other)?;
                     if meta.version == META_VERSION_V2 {
-                        return unlock_v2(dir, &meta, password, keystore);
+                        return unlock_v2(&lock, dir, &meta, password, keystore);
                     }
                     log::error!("v1 to v2 migration failed, vault stays v1: {e}");
                     let conn = connection::open_db(dir, &legacy_key).map_err(UnlockFailure::Other)?;
@@ -169,6 +185,7 @@ pub fn unlock_with_password(
 }
 
 fn unlock_v2(
+    lock: &VaultLock,
     dir: &Path,
     meta: &VaultMeta,
     password: &[u8],
@@ -176,8 +193,9 @@ fn unlock_v2(
 ) -> Result<Unlocked, UnlockFailure> {
     let dek = unwrap_with_password(meta, password)?;
     let conn = connection::open_db(dir, &dek).map_err(UnlockFailure::Other)?;
+    migration::remove_superseded_db(lock, dir, &dek);
     if meta.keychain_invalidation_pending {
-        if let Err(e) = finish_keychain_invalidation(dir, keystore) {
+        if let Err(e) = finish_keychain_invalidation_locked(lock, dir, keystore) {
             log::warn!("Keychain invalidation still pending: {e}");
         }
     }
@@ -196,13 +214,14 @@ fn unwrap_with_password(meta: &VaultMeta, password: &[u8]) -> Result<Zeroizing<[
 
 /// Unlock with the DEK copy stored in the Keychain (Touch ID).
 pub fn unlock_with_keystore(dir: &Path, keystore: &dyn KeyStore) -> Result<Unlocked, String> {
-    reconcile(dir)?;
+    let lock = VaultLock::acquire(dir)?;
+    reconcile_locked(&lock, dir)?;
     let meta = connection::read_meta(dir)?;
     if meta.version != META_VERSION_V2 {
         return Err("Unlock with your master password once to upgrade this vault".to_string());
     }
     if meta.keychain_invalidation_pending {
-        let _ = finish_keychain_invalidation(dir, keystore);
+        let _ = finish_keychain_invalidation_locked(&lock, dir, keystore);
         return Err("Touch ID was reset. Unlock with your master password".to_string());
     }
     let bytes = keystore.read()?;
@@ -213,6 +232,7 @@ pub fn unlock_with_keystore(dir: &Path, keystore: &dyn KeyStore) -> Result<Unloc
     dek.copy_from_slice(&bytes);
     let conn = connection::open_db(dir, &dek)
         .map_err(|_| "Touch ID key does not match this vault".to_string())?;
+    migration::remove_superseded_db(&lock, dir, &dek);
     Ok(Unlocked { conn, key: dek, legacy: false })
 }
 
@@ -226,12 +246,13 @@ pub fn enable_touch_id(
     if legacy {
         return Err("Vault upgrade pending. Unlock with your master password first".to_string());
     }
+    let lock = VaultLock::acquire(dir)?;
     let meta = connection::read_meta(dir)?;
     if meta.version != META_VERSION_V2 {
         return Err("Vault upgrade pending. Unlock with your master password first".to_string());
     }
     if meta.keychain_invalidation_pending {
-        finish_keychain_invalidation(dir, keystore)?;
+        finish_keychain_invalidation_locked(&lock, dir, keystore)?;
     }
     let _ = keystore.delete(); // Remove stale item if any
     keystore.store(dek)
@@ -248,6 +269,7 @@ pub fn generate_recovery_kit(
     if legacy {
         return Err("Vault upgrade pending. Unlock with your master password first".to_string());
     }
+    let _lock = VaultLock::acquire(dir)?;
     let mut meta = connection::read_meta(dir)?;
     if meta.version != META_VERSION_V2 {
         return Err("Vault upgrade pending. Unlock with your master password first".to_string());
@@ -276,10 +298,12 @@ pub fn recover(
     keystore: &dyn KeyStore,
     hook: FaultHook,
 ) -> Result<RecoverOutcome, RecoverFailure> {
-    reconcile(dir).map_err(RecoverFailure::Other)?;
+    // Cheap input checks first: never parse unbounded input (F5).
+    let raw = recovery_key::decode(recovery_key_text).map_err(|_| RecoverFailure::InvalidKey)?;
+    let lock = VaultLock::acquire(dir).map_err(RecoverFailure::Other)?;
+    reconcile_locked(&lock, dir).map_err(RecoverFailure::Other)?;
     let meta = connection::read_meta(dir).map_err(RecoverFailure::Other)?;
 
-    let raw = recovery_key::decode(recovery_key_text).map_err(|_| RecoverFailure::InvalidKey)?;
     if raw.len() != recovery_key::RECOVERY_KEY_LEN {
         return Err(RecoverFailure::InvalidKey);
     }
@@ -325,13 +349,15 @@ pub fn recover(
             drop(connection::open_db(dir, &legacy_key).map_err(RecoverFailure::Other)?);
             // Migration writes a v2 meta wrapped by the new password, without a
             // recovery wrap (C5) and with Keychain invalidation pending (C6).
-            migration::migrate_v1(dir, &legacy_key, new_password, hook).map_err(RecoverFailure::Other)?
+            migration::migrate_v1_locked(&lock, dir, &legacy_key, new_password, hook)
+                .map_err(RecoverFailure::Other)?
         }
         _ => return Err(RecoverFailure::Other("Unsupported vault version".to_string())),
     };
 
-    let keychain_error = finish_keychain_invalidation(dir, keystore).err();
+    let keychain_error = finish_keychain_invalidation_locked(&lock, dir, keystore).err();
     let conn = connection::open_db(dir, &dek).map_err(RecoverFailure::Other)?;
+    migration::remove_superseded_db(&lock, dir, &dek);
     Ok(RecoverOutcome {
         unlocked: Unlocked { conn, key: dek, legacy: false },
         keychain_error,
@@ -347,7 +373,8 @@ pub fn change_password(
     new_password: &[u8],
     hook: FaultHook,
 ) -> Result<(), UnlockFailure> {
-    reconcile(dir).map_err(UnlockFailure::Other)?;
+    let lock = VaultLock::acquire(dir).map_err(UnlockFailure::Other)?;
+    reconcile_locked(&lock, dir).map_err(UnlockFailure::Other)?;
     let meta = connection::read_meta(dir).map_err(UnlockFailure::Other)?;
     if meta.version != META_VERSION_V2 {
         return Err(UnlockFailure::Other(
@@ -374,6 +401,15 @@ pub fn change_password(
 /// delete the Keychain item, then clear the meta flag. Idempotent; on error
 /// the flag stays set and Touch ID unlock is refused until it succeeds.
 pub fn finish_keychain_invalidation(dir: &Path, keystore: &dyn KeyStore) -> Result<(), String> {
+    let lock = VaultLock::acquire(dir)?;
+    finish_keychain_invalidation_locked(&lock, dir, keystore)
+}
+
+fn finish_keychain_invalidation_locked(
+    _lock: &VaultLock,
+    dir: &Path,
+    keystore: &dyn KeyStore,
+) -> Result<(), String> {
     let mut meta = connection::read_meta(dir)?;
     if !meta.keychain_invalidation_pending {
         return Ok(());
