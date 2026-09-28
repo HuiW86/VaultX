@@ -1,7 +1,7 @@
 //! Vault key lifecycle: DEK/KEK hierarchy, create/unlock/recovery/password
 //! change, v1→v2 migration and Keychain invalidation.
 //!
-//! Authoritative contract: `docs/contracts/vault-key-lifecycle.md` (C1–C9).
+//! Authoritative contract: `docs/contracts/vault-key-lifecycle.md` (C1–C13).
 //! Everything here is independent of Tauri so it can be tested against temp
 //! directories with a fake Keychain and injected faults.
 

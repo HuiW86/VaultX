@@ -144,6 +144,7 @@ fn make_v1_vault(dir: &Path) -> (VaultPlaintexts, String, [u8; 32]) {
         dek_wrapped_by_password: None,
         dek_wrapped_by_recovery: None,
         keychain_invalidation_pending: false,
+        superseded_db: None,
     };
     connection::write_meta(dir, &meta).unwrap();
     let mut key = [0u8; 32];
@@ -184,6 +185,7 @@ fn try_password(dir: &Path, pw: &[u8]) -> Option<VaultPlaintexts> {
     match lifecycle::unlock_with_password(dir, pw, &ks, &no_faults) {
         Ok(u) => Some(migration::collect_plaintexts(&u.conn, &u.key).expect("C7: all data readable")),
         Err(UnlockFailure::WrongCredential) => None,
+        Err(UnlockFailure::ManualRestoreRequired) => panic!("unexpected manual-restore error"),
         Err(UnlockFailure::Other(e)) => panic!("unexpected unlock error: {e}"),
     }
 }
@@ -719,6 +721,190 @@ fn retry_keeps_legacy_db_when_new_db_is_truncated_before_retry() {
     let ks = MemoryKeyStore::new();
     let _ = lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults);
     assert!(legacy_db.exists(), "a 0-byte new DB must not supersede the legacy DB");
+}
+
+// ---------- H2: row loss after the commit never deletes the legacy DB (C1, C8) ----------
+
+/// DEK of a v2 vault, unwrapped with `pw` from the on-disk meta.
+fn dek_from_meta(dir: &Path, pw: &[u8]) -> [u8; 32] {
+    let meta = connection::read_meta(dir).unwrap();
+    let kek = key_derivation::derive_key(pw, &meta.kdf.salt).unwrap();
+    let dek = key_wrap::unwrap_dek(&kek, meta.dek_wrapped_by_password.as_deref().unwrap(), key_wrap::PURPOSE_PASSWORD)
+        .unwrap();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&dek[..]);
+    out
+}
+
+/// Silently drop one field and one password_history row from the migrated
+/// DB. Schema, integrity check and decryption of what is left all still pass:
+/// only the row counts reveal the loss.
+fn lose_rows(dir: &Path, dek: &[u8; 32]) {
+    let conn = connection::open_db_file(&dir.join(connection::MIGRATED_DB_FILENAME), dek).unwrap();
+    conn.execute_batch(
+        "DELETE FROM fields WHERE id = (SELECT id FROM fields WHERE field_type = 'hidden' LIMIT 1);
+         DELETE FROM password_history WHERE id = (SELECT id FROM password_history LIMIT 1);
+         PRAGMA wal_checkpoint(TRUNCATE);",
+    )
+    .unwrap();
+    let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).unwrap();
+    assert_eq!(check, "ok");
+    let counts = migration::collect_plaintexts(&conn, dek).unwrap().counts;
+    assert!(counts.vaults >= 1, "the damaged DB still looks like a vault");
+}
+
+/// Hook that damages the migrated DB right before the legacy DB would be
+/// deleted, i.e. after the commit; `pw` is the password of the committed meta.
+fn lose_rows_before_legacy_delete<'a>(dir: &'a Path, pw: &'a [u8]) -> impl Fn(&'static str) -> Result<(), String> + 'a {
+    move |p| {
+        if p == "migrate:before_legacy_delete" {
+            lose_rows(dir, &dek_from_meta(dir, pw));
+        }
+        Ok(())
+    }
+}
+
+/// Commit a migration whose legacy-DB removal is deferred (failing directory
+/// sync after the commit), then drop rows from the new DB. Returns the DEK.
+fn committed_migration_with_lost_rows(dir: &Path, legacy: &[u8; 32]) -> [u8; 32] {
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir, legacy, OLD_PW, &sync_fails).is_err());
+    assert!(dir.join(connection::DB_FILENAME).exists());
+    let dek = dek_from_meta(dir, OLD_PW);
+    lose_rows(dir, &dek);
+    dek
+}
+
+fn assert_legacy_db_intact(dir: &Path, legacy: &[u8; 32], baseline: &VaultPlaintexts) {
+    let legacy_db = dir.join(connection::DB_FILENAME);
+    assert!(legacy_db.exists(), "legacy DB must be kept");
+    let meta = connection::read_meta(dir).unwrap();
+    let marker = meta.superseded_db.expect("marker stays while the legacy DB exists");
+    assert_eq!(marker.counts, baseline.counts);
+    // The marker keeps what a manual restore needs: the legacy key derives
+    // from the old password and the recorded v1 salt.
+    let key = key_derivation::derive_key(OLD_PW, &marker.legacy_kdf.salt).unwrap();
+    assert_eq!(&key[..], &legacy[..]);
+    let conn = connection::open_db_file(&legacy_db, legacy).unwrap();
+    assert_eq!(&migration::collect_plaintexts(&conn, legacy).unwrap(), baseline);
+}
+
+#[test]
+fn migration_records_source_counts_and_clears_them_after_deleting_legacy_db() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir.path(), &legacy, OLD_PW, &sync_fails).is_err());
+    let marker = connection::read_meta(dir.path()).unwrap().superseded_db.unwrap();
+    assert_eq!(marker.counts, baseline.counts);
+    assert!(marker.legacy_recovery_blob.is_some());
+
+    assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
+    assert!(!dir.path().join(connection::DB_FILENAME).exists());
+    assert!(connection::read_meta(dir.path()).unwrap().superseded_db.is_none(), "marker cleared");
+}
+
+#[test]
+fn password_unlock_retry_refuses_new_db_with_lost_rows_and_keeps_legacy_db() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    committed_migration_with_lost_rows(dir.path(), &legacy);
+
+    let ks = MemoryKeyStore::new();
+    let err = lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults).unwrap_err();
+    assert_eq!(err, UnlockFailure::ManualRestoreRequired, "must not open the incomplete DB silently");
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+    // Retrying and reconcile change nothing.
+    assert!(lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults).is_err());
+    lifecycle::reconcile(dir.path()).unwrap();
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+}
+
+#[test]
+fn password_unlock_migration_with_lost_rows_after_commit_keeps_legacy_db() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let ks = MemoryKeyStore::new();
+    let hook = lose_rows_before_legacy_delete(dir.path(), OLD_PW);
+    let err = lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &hook).unwrap_err();
+    assert_eq!(err, UnlockFailure::ManualRestoreRequired);
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+}
+
+#[test]
+fn touch_id_retry_refuses_new_db_with_lost_rows_and_keeps_legacy_db() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let dek = committed_migration_with_lost_rows(dir.path(), &legacy);
+    let ks = MemoryKeyStore::new();
+    // Touch ID is refused while the post-migration invalidation is pending;
+    // complete it, then store the (correct) new DEK as Touch ID would.
+    lifecycle::finish_keychain_invalidation(dir.path(), &ks).unwrap();
+    ks.put_raw(&dek);
+
+    let err = lifecycle::unlock_with_keystore(dir.path(), &ks).unwrap_err();
+    assert_eq!(err, lifecycle::MANUAL_RESTORE_REQUIRED);
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+}
+
+#[test]
+fn v1_recovery_with_lost_rows_after_commit_keeps_legacy_db() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, kit, legacy) = make_v1_vault(dir.path());
+    let ks = MemoryKeyStore::new();
+    let hook = lose_rows_before_legacy_delete(dir.path(), NEW_PW);
+    let err = lifecycle::recover(dir.path(), &kit, NEW_PW, &ks, &hook).unwrap_err();
+    assert_eq!(err, RecoverFailure::ManualRestoreRequired);
+    assert_eq!(err.message(), lifecycle::MANUAL_RESTORE_REQUIRED);
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+    // Later unlocks with the new password refuse as well and keep it.
+    assert_eq!(
+        lifecycle::unlock_with_password(dir.path(), NEW_PW, &ks, &no_faults).unwrap_err(),
+        UnlockFailure::ManualRestoreRequired
+    );
+    assert!(dir.path().join(connection::DB_FILENAME).exists());
+}
+
+#[test]
+fn v2_recovery_refuses_new_db_with_lost_rows_without_committing() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir.path(), &legacy, OLD_PW, &sync_fails).is_err());
+    let dek = dek_from_meta(dir.path(), OLD_PW);
+    let kit = lifecycle::generate_recovery_kit(dir.path(), &dek, false, &no_faults).unwrap();
+    lose_rows(dir.path(), &dek);
+    let before = fs::read(dir.path().join(connection::META_FILENAME)).unwrap();
+
+    let ks = MemoryKeyStore::new();
+    let err = lifecycle::recover(dir.path(), &kit, NEW_PW, &ks, &no_faults).unwrap_err();
+    assert_eq!(err, RecoverFailure::ManualRestoreRequired);
+    assert_eq!(fs::read(dir.path().join(connection::META_FILENAME)).unwrap(), before, "nothing committed");
+    assert_legacy_db_intact(dir.path(), &legacy, &baseline);
+}
+
+#[test]
+fn meta_without_recorded_counts_never_deletes_legacy_db() {
+    // Meta committed by 2.2 code carries no source counts: the legacy DB is
+    // kept (no comparison possible), a vault that verifies still opens.
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir.path(), &legacy, OLD_PW, &sync_fails).is_err());
+    let mut meta = connection::read_meta(dir.path()).unwrap();
+    meta.superseded_db = None;
+    connection::write_meta(dir.path(), &meta).unwrap();
+
+    assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
+    assert!(dir.path().join(connection::DB_FILENAME).exists(), "no recorded counts, no deletion");
 }
 
 // ---------- F2: cross-process lock (C10) ----------

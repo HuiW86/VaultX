@@ -27,6 +27,7 @@ fn setup_full_vault(dir: &std::path::Path) -> [u8; 32] {
         dek_wrapped_by_password: None,
         dek_wrapped_by_recovery: None,
         keychain_invalidation_pending: false,
+        superseded_db: None,
     };
     connection::write_meta(dir, &meta).unwrap();
 
@@ -79,6 +80,7 @@ fn unlock_with_correct_password() {
         dek_wrapped_by_password: None,
         dek_wrapped_by_recovery: None,
         keychain_invalidation_pending: false,
+        superseded_db: None,
     };
     connection::write_meta(dir.path(), &meta).unwrap();
 
@@ -112,6 +114,7 @@ fn unlock_with_wrong_password_fails() {
         dek_wrapped_by_password: None,
         dek_wrapped_by_recovery: None,
         keychain_invalidation_pending: false,
+        superseded_db: None,
     }).unwrap();
 
     let meta = connection::read_meta(dir.path()).unwrap();
