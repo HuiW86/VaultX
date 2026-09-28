@@ -397,9 +397,12 @@ pub fn change_password(
     Ok(())
 }
 
-/// Complete a pending Keychain invalidation (C6): clear `touch_id_enabled`,
-/// delete the Keychain item, then clear the meta flag. Idempotent; on error
-/// the flag stays set and Touch ID unlock is refused until it succeeds.
+/// Complete a pending Keychain invalidation (C6): clear `touch_id_enabled`
+/// and delete the Keychain item, then clear the meta flag. Both steps are
+/// always attempted, independently: a settings write failure must not keep
+/// the (possibly legacy) key in the Keychain. The flag is cleared only when
+/// both succeeded; otherwise it stays set and Touch ID unlock is refused
+/// until a later call succeeds. Idempotent.
 pub fn finish_keychain_invalidation(dir: &Path, keystore: &dyn KeyStore) -> Result<(), String> {
     let lock = VaultLock::acquire(dir)?;
     finish_keychain_invalidation_locked(&lock, dir, keystore)
@@ -414,14 +417,24 @@ fn finish_keychain_invalidation_locked(
     if !meta.keychain_invalidation_pending {
         return Ok(());
     }
+
+    let mut errors: Vec<String> = Vec::new();
     let mut settings = read_settings(dir);
     if settings.touch_id_enabled {
         settings.touch_id_enabled = false;
-        write_settings(dir, &settings)?;
+        if let Err(e) = write_settings(dir, &settings) {
+            log::warn!("Keychain invalidation: disabling Touch ID in settings failed: {e}");
+            errors.push("Failed to turn off Touch ID in settings".to_string());
+        }
     }
-    keystore
-        .delete()
-        .map_err(|_| "Failed to remove the Touch ID key from the Keychain".to_string())?;
+    if let Err(e) = keystore.delete() {
+        log::warn!("Keychain invalidation: deleting the Keychain item failed: {e}");
+        errors.push("Failed to remove the Touch ID key from the Keychain".to_string());
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
     meta.keychain_invalidation_pending = false;
     connection::write_meta(dir, &meta)
 }

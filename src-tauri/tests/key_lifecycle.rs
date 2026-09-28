@@ -705,3 +705,38 @@ fn flows_wait_for_the_vault_lock() {
     assert!(finished.duration_since(started) >= std::time::Duration::from_millis(300));
     assert_eq!(try_password(dir.path(), OLD_PW).unwrap(), baseline);
 }
+
+// ---------- F4: Keychain invalidation attempts both steps (C6) ----------
+
+#[test]
+fn keychain_item_is_deleted_even_if_settings_write_fails() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, kit) = make_v2_vault(dir.path());
+    let ks = MemoryKeyStore::new();
+    ks.put_raw(&[9u8; 32]);
+    set_touch_id_setting(dir.path(), true);
+    // Make the atomic settings write fail: its temp path is a directory.
+    let blocker = dir.path().join(".vaultx-settings.tmp");
+    fs::create_dir(&blocker).unwrap();
+
+    let outcome = lifecycle::recover(dir.path(), &kit, NEW_PW, &ks, &no_faults).unwrap();
+    let err = outcome.keychain_error.clone().expect("settings failure must be reported");
+    assert!(err.contains("settings"));
+    assert_eq!(migration::collect_plaintexts(&outcome.unlocked.conn, &outcome.unlocked.key).unwrap(), baseline);
+    drop(outcome);
+    assert!(!ks.has_item(), "Keychain item must be deleted despite the settings failure");
+    assert!(connection::read_meta(dir.path()).unwrap().keychain_invalidation_pending, "flag stays until both steps succeed");
+    assert!(lifecycle::unlock_with_keystore(dir.path(), &ks).is_err());
+
+    // Both steps failing are both reported.
+    ks.fail_delete.set(true);
+    let err = lifecycle::finish_keychain_invalidation(dir.path(), &ks).unwrap_err();
+    assert!(err.contains("settings") && err.contains("Keychain"));
+    assert!(connection::read_meta(dir.path()).unwrap().keychain_invalidation_pending);
+
+    ks.fail_delete.set(false);
+    fs::remove_dir(&blocker).unwrap();
+    lifecycle::finish_keychain_invalidation(dir.path(), &ks).unwrap();
+    assert!(!touch_id_setting(dir.path()));
+    assert!(!connection::read_meta(dir.path()).unwrap().keychain_invalidation_pending);
+}
