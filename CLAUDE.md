@@ -18,6 +18,9 @@ Local-first password manager for macOS. Tauri 2.0 + React + TypeScript + Rust.
 - AES-256-GCM encrypts only `password`, `hidden`, `card_number` field values
 - Format: `version(1) || nonce(12) || ciphertext || tag(16)`
 
+### Contracts (authoritative)
+- Vault key lifecycle (master key, salt, rekey, recovery blob, Keychain): `docs/contracts/vault-key-lifecycle.md` — read before touching auth/recovery/security commands; update it first when changing that behavior
+
 ### Security Rules
 - `master_key` wrapped in `Zeroizing<[u8; 32]>`, zeroized on lock/exit
 - Lock clears: Rust state (zeroize + close DB) + React stores (reset) + reveal timers + clipboard
