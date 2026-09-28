@@ -1,6 +1,6 @@
 # Vault Key Lifecycle Contract
 
-Version 2.1 (2026-09-28). Status: **confirmed** (owner: project owner). 2.1 adds C10–C12, tightens the migration commit (F1) and Keychain invalidation (F4) decisions and records exceptions E1–E3 after the DEK/KEK review. Supersedes v1 (same date), which assumed the password-derived key encrypted the DB and fields directly; that design lost field data on recovery (fields stayed encrypted with the old key).
+Version 2.1 (2026-09-28). Status: **confirmed** (owner: project owner; 2.1 additions C10–C12 and exceptions E1–E3 were drafted by the implementer in 3acd08b and confirmed by the owner on 2026-09-28). 2.1 adds C10–C12, tightens the migration commit (F1) and Keychain invalidation (F4) decisions and records exceptions E1–E3 after the DEK/KEK review. Supersedes v1 (same date), which assumed the password-derived key encrypted the DB and fields directly; that design lost field data on recovery (fields stayed encrypted with the old key).
 
 This file is the authoritative source for how the vault data key, key-encryption keys, KDF salt, recovery kit and Keychain copy change together. Code must follow it; to change behavior described here, update this file first (or in the same commit) and keep the checks below passing.
 
