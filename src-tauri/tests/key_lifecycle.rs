@@ -658,6 +658,69 @@ fn migration_keeps_legacy_db_when_new_db_does_not_reopen() {
     assert!(dir.path().join(connection::DB_FILENAME).exists());
 }
 
+// ---------- G2: a truncated new DB never supersedes the legacy DB (C1, C8) ----------
+
+fn truncate_db(path: &Path) {
+    fs::OpenOptions::new().write(true).open(path).unwrap().set_len(0).unwrap();
+    for suffix in ["-wal", "-shm"] {
+        let mut side = path.as_os_str().to_owned();
+        side.push(suffix);
+        let _ = fs::remove_file(side);
+    }
+}
+
+#[test]
+fn migration_keeps_legacy_db_when_new_db_is_truncated_after_commit() {
+    let dir = TempDir::new().unwrap();
+    let (baseline, _, legacy) = make_v1_vault(dir.path());
+    let shadow = dir.path().join(connection::MIGRATED_DB_FILENAME);
+    // A 0-byte file "opens" with any key; the flow must not take that as proof.
+    let probe = TempDir::new().unwrap();
+    let empty = probe.path().join("empty.db");
+    fs::write(&empty, b"").unwrap();
+    assert!(connection::open_db_file(&empty, &[1u8; 32]).is_ok());
+    let truncate_after_commit = |p: &'static str| -> Result<(), String> {
+        if p == "migrate:committed" {
+            truncate_db(&shadow);
+        }
+        Ok(())
+    };
+    let err = migration::migrate_v1(dir.path(), &legacy, OLD_PW, &truncate_after_commit).unwrap_err();
+    assert!(err.contains("original database was kept"), "{err}");
+    let legacy_db = dir.path().join(connection::DB_FILENAME);
+    assert!(legacy_db.exists(), "legacy DB must be kept");
+
+    // Later keyed opens (the retry path) must not delete it either.
+    let ks = MemoryKeyStore::new();
+    let _ = lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults);
+    assert!(legacy_db.exists(), "retry must not delete the legacy DB");
+    lifecycle::reconcile(dir.path()).unwrap();
+    assert!(legacy_db.exists());
+
+    // The kept legacy DB still holds every value (manual recovery, E4).
+    let conn = connection::open_db_file(&legacy_db, &legacy).unwrap();
+    assert_eq!(migration::collect_plaintexts(&conn, &legacy).unwrap(), baseline);
+}
+
+#[test]
+fn retry_keeps_legacy_db_when_new_db_is_truncated_before_retry() {
+    let dir = TempDir::new().unwrap();
+    let (_, _, legacy) = make_v1_vault(dir.path());
+    // Commit succeeds but the directory fsync fails: the legacy DB is kept
+    // and removal is left to the next keyed open.
+    let sync_fails = |p: &'static str| -> Result<(), String> {
+        if p == "meta:renamed" { Err("fsync failed".into()) } else { Ok(()) }
+    };
+    assert!(migration::migrate_v1(dir.path(), &legacy, OLD_PW, &sync_fails).is_err());
+    let legacy_db = dir.path().join(connection::DB_FILENAME);
+    assert!(legacy_db.exists());
+
+    truncate_db(&dir.path().join(connection::MIGRATED_DB_FILENAME));
+    let ks = MemoryKeyStore::new();
+    let _ = lifecycle::unlock_with_password(dir.path(), OLD_PW, &ks, &no_faults);
+    assert!(legacy_db.exists(), "a 0-byte new DB must not supersede the legacy DB");
+}
+
 // ---------- F2: cross-process lock (C10) ----------
 
 #[test]

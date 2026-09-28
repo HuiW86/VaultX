@@ -196,7 +196,7 @@ fn unlock_v2(
 ) -> Result<Unlocked, UnlockFailure> {
     let dek = unwrap_with_password(meta, password)?;
     let conn = connection::open_db(dir, &dek).map_err(UnlockFailure::Other)?;
-    migration::remove_superseded_db(lock, dir, &dek);
+    migration::remove_superseded_db(lock, dir, &dek, None);
     if meta.keychain_invalidation_pending {
         if let Err(e) = finish_keychain_invalidation_locked(lock, dir, keystore) {
             log::warn!("Keychain invalidation still pending: {e}");
@@ -235,7 +235,7 @@ pub fn unlock_with_keystore(dir: &Path, keystore: &dyn KeyStore) -> Result<Unloc
     dek.copy_from_slice(&bytes);
     let conn = connection::open_db(dir, &dek)
         .map_err(|_| "Touch ID key does not match this vault".to_string())?;
-    migration::remove_superseded_db(&lock, dir, &dek);
+    migration::remove_superseded_db(&lock, dir, &dek, None);
     Ok(Unlocked { conn, key: dek, legacy: false })
 }
 
@@ -380,7 +380,7 @@ pub fn recover(
 
     let keychain_error = finish_keychain_invalidation_locked(&lock, dir, keystore).err();
     let conn = connection::open_db(dir, &dek).map_err(RecoverFailure::Other)?;
-    migration::remove_superseded_db(&lock, dir, &dek);
+    migration::remove_superseded_db(&lock, dir, &dek, None);
     Ok(RecoverOutcome {
         unlocked: Unlocked { conn, key: dek, legacy: false },
         keychain_error,
