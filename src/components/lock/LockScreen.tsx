@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, type FormEvent } from "react"
 import { motion } from "framer-motion";
 import { AlertTriangle, Fingerprint, Lock } from "lucide-react";
 import { Button } from "../ui/Button";
-import { useAppStore } from "../../stores/appStore";
+import { unlockedStatus, useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
 import { MANUAL_RESTORE_REQUIRED, isManualRestoreError } from "../../lib/errors";
 import { useTranslation } from "../../i18n";
@@ -63,7 +63,7 @@ export function LockScreen() {
     setBiometricLoading(true);
     try {
       await api.unlockBiometric();
-      useAppStore.setState({ status: "unlocked", error: null });
+      useAppStore.setState({ status: unlockedStatus(), error: null });
     } catch (e) {
       // Touch ID failed or cancelled — user can use password. A vault that
       // needs a manual restore must say so instead of failing silently.

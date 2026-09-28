@@ -2,16 +2,26 @@ import { useState, useCallback, type FormEvent } from "react";
 import { Shield, Download, Check } from "lucide-react";
 import { Button } from "../ui/Button";
 import { StrengthMeter } from "../ui/StrengthMeter";
-import { useAppStore } from "../../stores/appStore";
+import { clearFirstKitPending, useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
 import { downloadRecoveryKit } from "../../lib/recoveryKit";
 import { useTranslation } from "../../i18n";
 
 type Step = "password" | "recovery" | "done";
 
+/**
+ * First run: create the vault, then show its first recovery kit (contract
+ * C11). The vault is unlocked after creation, but the app stays in
+ * `setup_recovery` (this wizard, no main window) until the kit has been
+ * downloaded; the kit page has no way forward before that.
+ */
 export function SetupWizard() {
   const { t } = useTranslation();
-  const [step, setStep] = useState<Step>("password");
+  // Mounted in `setup_recovery` (e.g. unlock after a restart with the first
+  // kit still unsaved): go straight to the kit step.
+  const [step, setStep] = useState<Step>(() =>
+    useAppStore.getState().status === "setup_recovery" ? "recovery" : "password"
+  );
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,7 +29,10 @@ export function SetupWizard() {
   const [recoveryKey, setRecoveryKey] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [downloaded, setDownloaded] = useState(false);
+  const [kitLoading, setKitLoading] = useState(false);
+  const [kitError, setKitError] = useState("");
   const setup = useAppStore((s) => s.setup);
+  const finishSetup = useAppStore((s) => s.finishSetup);
   const globalError = useAppStore((s) => s.error);
 
   const validate = useCallback(() => {
@@ -30,6 +43,23 @@ export function SetupWizard() {
     return Object.keys(errs).length === 0;
   }, [password, confirm]);
 
+  // Only ever triggered by an explicit action, so a kit is never generated
+  // twice behind the user's back (each generation invalidates the previous).
+  const generateKit = useCallback(async () => {
+    setKitLoading(true);
+    setKitError("");
+    try {
+      const kit = await api.generateRecoveryKit();
+      setRecoveryKey(kit.recovery_key);
+      setFileContent(kit.file_content);
+      setDownloaded(false);
+    } catch {
+      setKitError(t("setup.recovery_generate_failed"));
+    } finally {
+      setKitLoading(false);
+    }
+  }, [t]);
+
   const handleCreateVault = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
@@ -37,23 +67,22 @@ export function SetupWizard() {
       setLoading(true);
       try {
         await setup(password);
-        // Generate recovery kit
-        const kit = await api.generateRecoveryKit();
-        setRecoveryKey(kit.recovery_key);
-        setFileContent(kit.file_content);
-        setStep("recovery");
       } catch {
         // Error shown via globalError
-      } finally {
         setLoading(false);
+        return;
       }
+      setLoading(false);
+      setStep("recovery");
+      await generateKit();
     },
-    [password, validate, loading, setup]
+    [password, validate, loading, setup, generateKit]
   );
 
   const handleDownload = useCallback(() => {
     downloadRecoveryKit(fileContent);
     setDownloaded(true);
+    clearFirstKitPending();
   }, [fileContent]);
 
   if (step === "recovery") {
@@ -71,12 +100,33 @@ export function SetupWizard() {
             {t("setup.recovery_desc")}
           </p>
 
+          {!recoveryKey ? (
+            <div className="w-full flex flex-col gap-[var(--spacing-md)]">
+              {kitError && (
+                <p role="alert" className="text-[var(--font-size-xs)] text-[var(--color-error)] text-center">
+                  {kitError}
+                </p>
+              )}
+              <Button
+                variant="primary"
+                size="lg"
+                loading={kitLoading}
+                disabled={kitLoading}
+                onClick={generateKit}
+                className="w-full"
+              >
+                {kitLoading ? t("setup.recovery_generating") : t("setup.recovery_generate")}
+              </Button>
+            </div>
+          ) : (
+          <>
           {/* Recovery key display */}
           <div className="w-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-[var(--radius-lg)] p-[var(--spacing-lg)] mb-[var(--spacing-lg)]">
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] mb-[var(--spacing-sm)]">
               {t("setup.recovery_key_label")}
             </p>
             <p
+              data-testid="setup-recovery-key"
               className="text-[var(--font-size-lg)] text-[var(--color-text-primary)] font-[var(--font-weight-semibold)] select-all text-center tracking-wider"
               style={{ fontFamily: "var(--font-mono)" }}
             >
@@ -120,6 +170,8 @@ export function SetupWizard() {
               {t("setup.recovery_must_download")}
             </p>
           )}
+          </>
+          )}
         </div>
       </div>
     );
@@ -143,7 +195,7 @@ export function SetupWizard() {
           <Button
             variant="primary"
             size="lg"
-            onClick={() => useAppStore.setState({ status: "unlocked" })}
+            onClick={finishSetup}
             className="w-full"
           >
             {t("setup.get_started")}
