@@ -39,23 +39,25 @@ function App() {
 
   // Activity heartbeat for auto-lock timer (throttled to every 60s)
   const lastHeartbeat = useRef(0);
+  // The vault is also unlocked while the setup wizard shows the first kit.
+  const vaultOpen = status === "unlocked" || status === "setup_recovery";
   const sendHeartbeat = useCallback(() => {
-    if (status !== "unlocked") return;
+    if (!vaultOpen) return;
     const now = Date.now();
     if (now - lastHeartbeat.current < 60_000) return;
     lastHeartbeat.current = now;
     api.heartbeat().catch(() => {});
-  }, [status]);
+  }, [vaultOpen]);
 
   useEffect(() => {
-    if (status !== "unlocked") return;
+    if (!vaultOpen) return;
     const events = ["mousemove", "keydown", "click", "scroll"] as const;
     events.forEach((e) => document.addEventListener(e, sendHeartbeat));
     sendHeartbeat();
     return () => {
       events.forEach((e) => document.removeEventListener(e, sendHeartbeat));
     };
-  }, [status, sendHeartbeat]);
+  }, [vaultOpen, sendHeartbeat]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -98,6 +100,8 @@ function AppContent({ status, corruptReason, searchInputRef }: {
         </div>
       );
     case "first_run":
+    case "setup_recovery":
+      // Same element in both states, so the wizard keeps its step and key.
       return <SetupWizard />;
     case "locked":
       return <LockScreen />;

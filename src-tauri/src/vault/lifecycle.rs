@@ -43,9 +43,18 @@ impl std::fmt::Debug for Unlocked {
     }
 }
 
+/// Stable error code returned to the UI when the migrated DB fails
+/// verification while the legacy DB still exists (G2, E4): the vault is not
+/// opened and the user is told a manual restore is needed. The frontend maps
+/// it to a translated explanation.
+pub const MANUAL_RESTORE_REQUIRED: &str = "manual_restore_required";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnlockFailure {
     WrongCredential,
+    /// The credential is valid, but `vault.v2.db` failed verification while
+    /// the legacy `vault.db` still exists. Nothing was opened or deleted.
+    ManualRestoreRequired,
     Other(String),
 }
 
@@ -55,6 +64,8 @@ pub enum RecoverFailure {
     NoRecoveryKit,
     /// Too many failed attempts (password or recovery); the key was not evaluated (C12).
     RateLimited { retry_after_ms: u64 },
+    /// See `UnlockFailure::ManualRestoreRequired`. Nothing was committed.
+    ManualRestoreRequired,
     Other(String),
 }
 
@@ -65,6 +76,7 @@ impl RecoverFailure {
             RecoverFailure::InvalidKey => "Invalid recovery key".to_string(),
             RecoverFailure::NoRecoveryKit => "No recovery kit has been set up".to_string(),
             RecoverFailure::RateLimited { retry_after_ms } => rate_limit::message(*retry_after_ms),
+            RecoverFailure::ManualRestoreRequired => MANUAL_RESTORE_REQUIRED.to_string(),
             RecoverFailure::Other(e) => e.clone(),
         }
     }
@@ -195,8 +207,11 @@ fn unlock_v2(
     keystore: &dyn KeyStore,
 ) -> Result<Unlocked, UnlockFailure> {
     let dek = unwrap_with_password(meta, password)?;
+    // The DEK is authenticated by the unwrap, so a failing check here means
+    // the new DB itself is bad; never open it silently while the legacy DB
+    // exists (G2).
+    finish_superseded_db(lock, dir, &dek).map_err(|_| UnlockFailure::ManualRestoreRequired)?;
     let conn = connection::open_db(dir, &dek).map_err(UnlockFailure::Other)?;
-    migration::remove_superseded_db(lock, dir, &dek, None);
     if meta.keychain_invalidation_pending {
         if let Err(e) = finish_keychain_invalidation_locked(lock, dir, keystore) {
             log::warn!("Keychain invalidation still pending: {e}");
@@ -235,8 +250,25 @@ pub fn unlock_with_keystore(dir: &Path, keystore: &dyn KeyStore) -> Result<Unloc
     dek.copy_from_slice(&bytes);
     let conn = connection::open_db(dir, &dek)
         .map_err(|_| "Touch ID key does not match this vault".to_string())?;
-    migration::remove_superseded_db(&lock, dir, &dek, None);
+    finish_superseded_db(&lock, dir, &dek).map_err(|_| MANUAL_RESTORE_REQUIRED.to_string())?;
     Ok(Unlocked { conn, key: dek, legacy: false })
+}
+
+/// Retry removing the legacy DB after a keyed open (`remove_superseded_db`).
+/// `Err` when the legacy DB exists and the new DB fails verification; the
+/// caller must refuse to open the vault. A kept legacy DB is only logged.
+fn finish_superseded_db(lock: &VaultLock, dir: &Path, dek: &[u8; 32]) -> Result<(), String> {
+    match migration::remove_superseded_db(lock, dir, dek) {
+        Err(e) => {
+            log::error!("Migrated database failed verification; legacy database kept, manual restore needed: {e}");
+            Err(e)
+        }
+        Ok(migration::SupersededOutcome::Kept(reason)) => {
+            log::warn!("Legacy database kept: {reason}");
+            Ok(())
+        }
+        Ok(_) => Ok(()),
+    }
 }
 
 /// Store the DEK in the Keychain for Touch ID (C6: never a password KEK).
@@ -340,6 +372,9 @@ pub fn recover(
             let rkek = recovery_key::derive_kek(&raw).map_err(RecoverFailure::Other)?;
             let dek = key_wrap::unwrap_dek(&rkek, wrapped, key_wrap::PURPOSE_RECOVERY)
                 .map_err(|_| RecoverFailure::InvalidKey)?;
+            // Never commit a recovery onto an empty or incomplete migrated DB
+            // while the legacy DB exists (G2); the kit keeps working.
+            finish_superseded_db(&lock, dir, &dek).map_err(|_| RecoverFailure::ManualRestoreRequired)?;
             drop(connection::open_db(dir, &dek).map_err(RecoverFailure::Other)?);
 
             let salt = key_derivation::generate_salt();
@@ -372,15 +407,30 @@ pub fn recover(
             drop(connection::open_db(dir, &legacy_key).map_err(RecoverFailure::Other)?);
             // Migration writes a v2 meta wrapped by the new password, without a
             // recovery wrap (C5) and with Keychain invalidation pending (C6).
-            migration::migrate_v1_locked(&lock, dir, &legacy_key, new_password, hook)
-                .map_err(RecoverFailure::Other)?
+            match migration::migrate_v1_locked(&lock, dir, &legacy_key, new_password, hook) {
+                Ok(dek) => dek,
+                Err(e) => {
+                    // The migration may have failed after its commit point
+                    // because the new DB did not verify: report that instead
+                    // of a generic error (read-only check, nothing deleted).
+                    if let Ok(meta) = connection::read_meta(dir) {
+                        if meta.version == META_VERSION_V2 {
+                            if let Ok(dek) = unwrap_with_password(&meta, new_password) {
+                                if migration::check_superseding_db(dir, &dek).is_err() {
+                                    return Err(RecoverFailure::ManualRestoreRequired);
+                                }
+                            }
+                        }
+                    }
+                    return Err(RecoverFailure::Other(e));
+                }
+            }
         }
         _ => return Err(RecoverFailure::Other("Unsupported vault version".to_string())),
     };
 
     let keychain_error = finish_keychain_invalidation_locked(&lock, dir, keystore).err();
     let conn = connection::open_db(dir, &dek).map_err(RecoverFailure::Other)?;
-    migration::remove_superseded_db(&lock, dir, &dek, None);
     Ok(RecoverOutcome {
         unlocked: Unlocked { conn, key: dek, legacy: false },
         keychain_error,

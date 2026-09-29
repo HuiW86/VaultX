@@ -1,10 +1,30 @@
 import { useState, useCallback, useEffect, useRef, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Fingerprint, Lock } from "lucide-react";
+import { AlertTriangle, Fingerprint, Lock } from "lucide-react";
 import { Button } from "../ui/Button";
-import { useAppStore } from "../../stores/appStore";
+import { unlockedStatus, useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/commands";
+import { MANUAL_RESTORE_REQUIRED, isManualRestoreError } from "../../lib/errors";
 import { useTranslation } from "../../i18n";
+
+/** Shown instead of opening a vault whose migrated DB failed verification (G2/E4). */
+function ManualRestoreNotice() {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="alert"
+      className="w-full flex flex-col gap-[var(--spacing-xs)] p-[var(--spacing-md)] border border-[var(--color-error)] rounded-[var(--radius-md)] text-left"
+    >
+      <p className="flex items-center gap-[var(--spacing-xs)] text-[var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-error)]">
+        <AlertTriangle size={16} className="shrink-0" />
+        {t("lock.manual_restore_title")}
+      </p>
+      <p className="text-[var(--font-size-xs)] text-[var(--color-text-secondary)]">
+        {t("lock.manual_restore_desc")}
+      </p>
+    </div>
+  );
+}
 
 export function LockScreen() {
   const { t } = useTranslation();
@@ -43,9 +63,11 @@ export function LockScreen() {
     setBiometricLoading(true);
     try {
       await api.unlockBiometric();
-      useAppStore.setState({ status: "unlocked", error: null });
-    } catch {
-      // Touch ID failed or cancelled — user can use password
+      useAppStore.setState({ status: unlockedStatus(), error: null });
+    } catch (e) {
+      // Touch ID failed or cancelled — user can use password. A vault that
+      // needs a manual restore must say so instead of failing silently.
+      if (isManualRestoreError(e)) useAppStore.setState({ error: MANUAL_RESTORE_REQUIRED });
     } finally {
       setBiometricLoading(false);
     }
@@ -122,11 +144,13 @@ export function LockScreen() {
             aria-label={t("lock.master_password_placeholder")}
           />
 
-          {error && (
+          {error === MANUAL_RESTORE_REQUIRED ? (
+            <ManualRestoreNotice />
+          ) : error ? (
             <p className="text-[var(--font-size-xs)] text-[var(--color-error)] text-center">
               {error}
             </p>
-          )}
+          ) : null}
 
           {countdown > 0 && (
             <p className="text-[var(--font-size-xs)] text-[var(--color-text-tertiary)] text-center">
@@ -193,9 +217,11 @@ export function LockScreen() {
               placeholder={t("lock.confirm_new_placeholder")}
               className="w-full h-10 px-[var(--spacing-md)] bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] text-[var(--font-size-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] outline-none focus:border-[var(--color-primary)]"
             />
-            {recoveryError && (
+            {recoveryError === MANUAL_RESTORE_REQUIRED ? (
+              <ManualRestoreNotice />
+            ) : recoveryError ? (
               <p className="text-[var(--font-size-xs)] text-[var(--color-error)]">{recoveryError}</p>
-            )}
+            ) : null}
             <Button
               variant="primary"
               size="md"
@@ -212,7 +238,11 @@ export function LockScreen() {
                     toastWindow.__vaultx_toast?.(t("lock.recovery_touch_id_cleanup_failed"), "error");
                   }
                 } catch (e) {
-                  setRecoveryError(typeof e === "string" ? e : t("lock.recovery_failed"));
+                  setRecoveryError(
+                    isManualRestoreError(e)
+                      ? MANUAL_RESTORE_REQUIRED
+                      : typeof e === "string" ? e : t("lock.recovery_failed")
+                  );
                 } finally {
                   setRecoveryLoading(false);
                 }

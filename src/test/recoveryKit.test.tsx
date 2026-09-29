@@ -228,6 +228,90 @@ describe("RecoveryKitDialog close guard (G1)", () => {
   });
 });
 
+describe("RecoveryKitDialog while generating (H3)", () => {
+  type Path = "x" | "overlay" | "escape" | "cancel";
+
+  function deferGenerate() {
+    let resolve!: (kit: typeof KIT) => void;
+    const pending = new Promise<typeof KIT>((r) => (resolve = r));
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_recovery_kit_status":
+          return { present: kitPresent, can_generate: true };
+        case "generate_recovery_kit": {
+          const kit = await pending;
+          kitPresent = true; // the backend committed; the old kit is gone
+          return kit;
+        }
+        case "get_settings":
+          return useSettingsStore.getState().settings;
+        case "is_touch_id_available":
+          return false;
+        default:
+          return undefined;
+      }
+    });
+    return () => resolve(KIT);
+  }
+
+  async function attempt(user: ReturnType<typeof userEvent.setup>, path: Path) {
+    if (path === "x") {
+      await user.click(screen.getByRole("button", { name: en["modal.close"] }));
+    } else if (path === "overlay") {
+      await user.click(screen.getByRole("dialog").previousElementSibling as HTMLElement);
+    } else if (path === "cancel") {
+      await user.click(screen.getByRole("button", { name: en["modal.cancel"] }));
+    } else {
+      await user.keyboard("{Escape}");
+    }
+  }
+
+  const entries = {
+    banner: async (user: ReturnType<typeof userEvent.setup>) => {
+      renderWithI18n(<RecoveryKitBanner />);
+      await user.click(await screen.findByRole("button", { name: en["recovery_kit.banner_action"] }));
+    },
+    settings: async (user: ReturnType<typeof userEvent.setup>) => {
+      useSettingsStore.setState({ loaded: true });
+      renderWithI18n(<SettingsPanel onClose={() => {}} />);
+      await user.click(await screen.findByRole("button", { name: en["recovery_kit.regenerate"] }));
+    },
+  };
+
+  for (const [entry, open] of Object.entries(entries)) {
+    for (const path of ["x", "overlay", "escape", "cancel"] as const) {
+      it(`${entry}: ${path} cannot close the dialog before the new key is shown`, async () => {
+        const finish = deferGenerate();
+        const user = userEvent.setup();
+        await open(user);
+        await user.click(screen.getByRole("button", { name: en["recovery_kit.confirm"] }));
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("generate_recovery_kit"));
+
+        await attempt(user, path);
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.getByText(en["recovery_kit.confirm_desc"])).toBeInTheDocument();
+
+        finish();
+        expect(await screen.findByTestId("recovery-key")).toHaveTextContent(KIT.recovery_key);
+      });
+    }
+  }
+
+  it("disables the cancel and close buttons while generating", async () => {
+    const finish = deferGenerate();
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithI18n(<RecoveryKitDialog open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: en["recovery_kit.confirm"] }));
+    expect(screen.getByRole("button", { name: en["modal.cancel"] })).toBeDisabled();
+    expect(screen.getByRole("button", { name: en["modal.close"] })).toBeDisabled();
+    for (const path of ["x", "overlay", "escape", "cancel"] as const) await attempt(user, path);
+    expect(onClose).not.toHaveBeenCalled();
+    finish();
+    expect(await screen.findByTestId("recovery-key")).toHaveTextContent(KIT.recovery_key);
+  });
+});
+
 describe("appStore recovery kit status", () => {
   it("forgets the old status after a recovery (the used kit is invalid)", async () => {
     useAppStore.setState({ status: "locked", recoveryKit: { present: true, can_generate: true } });

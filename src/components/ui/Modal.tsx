@@ -14,6 +14,11 @@ interface ModalProps {
   cancelLabel?: string;
   onConfirm?: () => void;
   loading?: boolean;
+  /**
+   * When false, every close path (X, overlay, Escape, cancel) is disabled,
+   * e.g. while an operation whose result must be shown is in flight.
+   */
+  dismissible?: boolean;
 }
 
 export function Modal({
@@ -26,6 +31,7 @@ export function Modal({
   cancelLabel,
   onConfirm,
   loading,
+  dismissible = true,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
@@ -36,11 +42,11 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && dismissible) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, dismissible]);
 
   // Focus first interactive element on open
   useEffect(() => {
@@ -62,7 +68,7 @@ export function Modal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 bg-[var(--color-bg-spotlight)]"
-            onClick={danger ? undefined : onClose}
+            onClick={danger || !dismissible ? undefined : onClose}
           />
           <motion.div
             ref={dialogRef}
@@ -81,7 +87,8 @@ export function Modal({
               </h2>
               <button
                 onClick={onClose}
-                className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded"
+                disabled={!dismissible}
+                className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label={t("modal.close")}
               >
                 <X size={18} />
@@ -94,7 +101,7 @@ export function Modal({
 
             {onConfirm && (
               <div className="flex justify-end gap-[var(--spacing-sm)]">
-                <Button variant="ghost" onClick={onClose}>
+                <Button variant="ghost" onClick={onClose} disabled={!dismissible}>
                   {resolvedCancelLabel}
                 </Button>
                 <Button

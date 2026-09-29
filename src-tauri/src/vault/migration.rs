@@ -10,11 +10,15 @@
 //!    `vault.v2.db` and wraps the new DEK with the password KEK. The shadow's
 //!    directory entry is fsynced before, and the directory after, the rename;
 //!    any sync error aborts the flow with `vault.db` kept.
-//! 4. Post-commit: `vault.db` is deleted only once the v2 meta is confirmed
-//!    durable and on disk and the new DB reopens with the DEK, has the full
-//!    schema and the migrated row counts (`verify_migrated_db`,
-//!    `remove_superseded_db`). If anything fails, `vault.db` is kept and the
-//!    next keyed open (password, Touch ID, recovery) retries the removal.
+//! 4. Post-commit: the committed meta records the source row counts in
+//!    `superseded_db`. `vault.db` is deleted only once the v2 meta is
+//!    confirmed durable and on disk and the new DB reopens with the DEK, has
+//!    the full schema and exactly the recorded row counts
+//!    (`verify_migrated_db`, `remove_superseded_db`); the marker is cleared
+//!    afterwards. If anything fails, `vault.db` is kept and the next keyed open
+//!    (password, Touch ID, recovery) retries; if the new DB fails verification
+//!    while `vault.db` exists, that open is refused with a manual-restore
+//!    error instead of opening an empty or incomplete vault (G2, 2.3).
 //!    `reconcile` never deletes it, since it has no key to verify the new DB.
 //!
 //! The original DB is never modified. The whole flow runs under the
@@ -31,18 +35,11 @@ use super::lock::VaultLock;
 use super::FaultHook;
 use crate::crypto::{encryption, key_derivation, key_wrap};
 use crate::db::connection::{
-    self, VaultMeta, DB_FILENAME, META_VERSION_V1, META_VERSION_V2, MIGRATED_DB_FILENAME,
+    self, SupersededDb, VaultMeta, DB_FILENAME, META_VERSION_V1, META_VERSION_V2,
+    MIGRATED_DB_FILENAME,
 };
 
-/// Row counts of every table that holds user data.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TableCounts {
-    pub vaults: i64,
-    pub entries: i64,
-    pub trashed_entries: i64,
-    pub fields: i64,
-    pub password_history: i64,
-}
+pub use crate::db::connection::TableCounts;
 
 /// Every field value and history value, decrypted. Sensitive field values
 /// and history values are decrypted with `key`; other field values are raw.
@@ -259,6 +256,12 @@ pub(crate) fn migrate_v1_locked(
     let mut new_meta = VaultMeta::new_v2(&salt, MIGRATED_DB_FILENAME, meta.created_at.clone(), wrapped);
     // The Keychain may hold the legacy key; it must be removed (C6).
     new_meta.keychain_invalidation_pending = true;
+    // Every later deletion of the legacy DB must match these counts (G2).
+    new_meta.superseded_db = Some(SupersededDb {
+        counts: expected.counts.clone(),
+        legacy_kdf: meta.kdf.clone(),
+        legacy_recovery_blob: meta.recovery_blob.clone(),
+    });
     // Errors here (including a failed directory fsync after the rename)
     // abort with `vault.db` untouched.
     connection::write_meta_with_hook(dir, &new_meta, hook)?;
@@ -272,14 +275,18 @@ pub(crate) fn migrate_v1_locked(
     {
         return Err("Migration commit could not be confirmed; the original database was kept".to_string());
     }
-    // "Opens with the DEK" is not enough (a 0-byte file opens with any key):
-    // the committed DB must hold the schema and exactly the migrated rows.
-    connection::open_db(dir, &dek)
-        .and_then(|conn| verify_migrated_db(&conn, &dek, Some(&expected.counts)))
-        .map_err(|_| "Migrated database could not be verified; the original database was kept".to_string())?;
     hook("migrate:before_legacy_delete")?;
-    if !remove_superseded_db(lock, dir, &dek, Some(&expected.counts)) {
-        log::warn!("Legacy database kept after migration; it will be removed on a later unlock");
+    // "Opens with the DEK" is not enough (a 0-byte file opens with any key):
+    // the committed DB must hold the schema and exactly the migrated rows,
+    // which `remove_superseded_db` checks against the counts in the meta.
+    match remove_superseded_db(lock, dir, &dek) {
+        Err(_) => {
+            return Err("Migrated database could not be verified; the original database was kept".to_string())
+        }
+        Ok(SupersededOutcome::Kept(reason)) => {
+            log::warn!("Legacy database kept after migration ({reason}); it will be removed on a later unlock");
+        }
+        Ok(_) => {}
     }
     Ok(dek)
 }
@@ -290,9 +297,10 @@ const REQUIRED_TABLES: [&str; 4] = ["vaults", "entries", "fields", "password_his
 /// Check that `conn` (the committed `vault.v2.db`) really holds the vault:
 /// every required table exists, the integrity check passes and every
 /// sensitive field and history value decrypts with `dek`. With `expected`
-/// (right after the migration) all row counts must equal the source DB's;
-/// without it (a later retry, when the user may have edited entries) the DB
-/// must at least contain a vault row. A 0-byte or freshly created file fails.
+/// (the source counts recorded in meta at the migration commit) all row
+/// counts must equal them; without it (meta written before 2.3, which
+/// recorded no counts) the DB must at least contain a vault row. A 0-byte or
+/// freshly created file fails.
 pub(crate) fn verify_migrated_db(
     conn: &Connection,
     dek: &[u8; 32],
@@ -326,45 +334,104 @@ pub(crate) fn verify_migrated_db(
     }
 }
 
+/// Result of `remove_superseded_db` when the new DB is not known to be bad.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SupersededOutcome {
+    /// No legacy DB is superseded (not migrated, or already removed).
+    Absent,
+    /// The legacy DB was verified to be superseded and deleted.
+    Removed,
+    /// The legacy DB was kept (reason given); the new DB passed verification
+    /// but deletion was not provably safe or did not complete.
+    Kept(String),
+}
+
+/// Whether the legacy `vault.db` is superseded by a committed migration:
+/// meta is v2, references `vault.v2.db`, and `vault.db` still exists.
+fn legacy_db_pending(dir: &Path, meta: &VaultMeta) -> bool {
+    meta.version == META_VERSION_V2
+        && meta.db_filename().ok() == Some(MIGRATED_DB_FILENAME)
+        && dir.join(DB_FILENAME).exists()
+}
+
+/// Read-only check used before trusting `vault.v2.db` while the legacy DB
+/// still exists: the new DB must open with `dek` and pass
+/// `verify_migrated_db` against the row counts recorded in meta at the
+/// migration commit (or, for meta written before 2.3 without them, contain
+/// at least one vault). `Ok(())` when no legacy DB is pending. `Err` means
+/// the new DB is empty or incomplete and must not be opened silently.
+pub(crate) fn check_superseding_db(dir: &Path, dek: &[u8; 32]) -> Result<(), String> {
+    let meta = connection::read_meta(dir)?;
+    if !legacy_db_pending(dir, &meta) {
+        return Ok(());
+    }
+    let conn = connection::open_db(dir, dek)?;
+    verify_migrated_db(&conn, dek, meta.superseded_db.as_ref().map(|s| &s.counts))
+}
+
 /// Remove the legacy `vault.db` superseded by a committed migration. Runs
-/// only when it is provably safe (F1, G2): the directory syncs (so the
-/// committed meta is durable), the on-disk meta is v2 and references
-/// `vault.v2.db`, that DB opens with `dek` and passes `verify_migrated_db`
-/// (with `expected` counts when called by the migration itself). Returns
-/// true when no legacy DB remains. Never fails the caller: on any doubt the
-/// legacy DB is simply kept.
+/// only when it is provably safe (F1, G2): the on-disk meta is v2 and
+/// references `vault.v2.db`, that DB opens with `dek` and passes
+/// `verify_migrated_db` with **exactly** the row counts recorded in
+/// `meta.superseded_db` at the migration commit, and the directory syncs.
+/// Every caller (migration, password unlock, Touch ID unlock, recovery)
+/// goes through here, so no path deletes the legacy DB without that
+/// comparison; without recorded counts the legacy DB is kept.
+///
+/// Returns `Err` when the legacy DB exists and the new DB fails
+/// verification: the caller must not open the vault silently (it reports
+/// that a manual restore is needed). Otherwise returns the outcome; the
+/// legacy DB is never deleted on any doubt. Clears `superseded_db` once the
+/// legacy DB is gone.
 pub(crate) fn remove_superseded_db(
     _lock: &VaultLock,
     dir: &Path,
     dek: &[u8; 32],
-    expected: Option<&TableCounts>,
-) -> bool {
+) -> Result<SupersededOutcome, String> {
     let legacy_path = dir.join(DB_FILENAME);
-    if !legacy_path.exists() {
-        return true;
+    let mut meta = match connection::read_meta(dir) {
+        Ok(m) => m,
+        Err(e) => return Ok(SupersededOutcome::Kept(e)),
+    };
+    let migrated = meta.version == META_VERSION_V2 && meta.db_filename().ok() == Some(MIGRATED_DB_FILENAME);
+    if !migrated {
+        return Ok(SupersededOutcome::Absent);
     }
-    let safe = (|| -> Result<bool, String> {
-        connection::sync_dir(dir)?;
-        let meta = connection::read_meta(dir)?;
-        if meta.version != META_VERSION_V2 || meta.db_filename()? != MIGRATED_DB_FILENAME {
-            return Ok(false);
-        }
-        let conn = connection::open_db(dir, dek)?;
-        verify_migrated_db(&conn, dek, expected)?;
-        Ok(true)
-    })();
-    match safe {
-        Ok(true) => {
-            connection::remove_db_files(&legacy_path);
-            if let Err(e) = connection::sync_dir(dir) {
-                log::warn!("Legacy database removed but directory sync failed: {e}");
-            }
-            !legacy_path.exists()
-        }
-        Ok(false) => false,
-        Err(e) => {
-            log::warn!("Keeping legacy database: {e}");
-            false
+    if !legacy_path.exists() {
+        clear_superseded_marker(dir, &mut meta);
+        return Ok(SupersededOutcome::Absent);
+    }
+
+    check_superseding_db(dir, dek)?;
+    if meta.superseded_db.is_none() {
+        let reason = "no recorded row counts for the legacy database".to_string();
+        log::warn!("Keeping legacy database: {reason}");
+        return Ok(SupersededOutcome::Kept(reason));
+    }
+    // The committed meta must be durable before the destructive step.
+    if let Err(e) = connection::sync_dir(dir) {
+        log::warn!("Keeping legacy database: {e}");
+        return Ok(SupersededOutcome::Kept(e));
+    }
+    connection::remove_db_files(&legacy_path);
+    if let Err(e) = connection::sync_dir(dir) {
+        log::warn!("Legacy database removed but directory sync failed: {e}");
+    }
+    if legacy_path.exists() {
+        let reason = "the legacy database file could not be deleted".to_string();
+        log::warn!("Keeping legacy database: {reason}");
+        return Ok(SupersededOutcome::Kept(reason));
+    }
+    clear_superseded_marker(dir, &mut meta);
+    Ok(SupersededOutcome::Removed)
+}
+
+/// Drop `superseded_db` from meta once no legacy DB remains. Best effort: a
+/// stale marker without a legacy DB is harmless and retried next time.
+fn clear_superseded_marker(dir: &Path, meta: &mut VaultMeta) {
+    if meta.superseded_db.take().is_some() {
+        if let Err(e) = connection::write_meta(dir, meta) {
+            log::warn!("Could not clear the superseded database marker: {e}");
         }
     }
 }

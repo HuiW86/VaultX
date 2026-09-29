@@ -22,6 +22,9 @@ const zhCN: Translations = {
   "setup.recovery_download": "下载恢复密钥",
   "setup.recovery_saved": "我已保存恢复密钥",
   "setup.recovery_must_download": "请先下载恢复密钥再继续",
+  "setup.recovery_generating": "正在创建恢复包…",
+  "setup.recovery_generate": "创建恢复包",
+  "setup.recovery_generate_failed": "无法创建恢复包，请重试。",
   "setup.all_set": "一切就绪",
   "setup.all_set_desc": "你的保险库已准备好，开始添加密码吧。",
   "setup.get_started": "开始使用",
@@ -43,6 +46,8 @@ const zhCN: Translations = {
   "lock.try_again_in": "{countdown}秒后重试",
   "lock.wait": "等待 {countdown}秒",
   "lock.unlock": "解锁",
+  "lock.manual_restore_title": "保险库需要手动恢复",
+  "lock.manual_restore_desc": "升级后的保险库数据库未通过安全校验，VaultX 没有打开它。没有删除任何数据：之前的数据库（vault.db）仍保留在 VaultX 数据文件夹中。请退出 VaultX，将整个文件夹（~/Library/Application Support/com.vaultx.app）复制到安全位置，不要删除其中任何文件；然后按 VaultX 手动恢复指南恢复之前的数据库，或携带该副本联系支持。",
 
   // Sidebar
   "sidebar.vaults": "保险库",

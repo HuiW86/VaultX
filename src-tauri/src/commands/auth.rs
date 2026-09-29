@@ -26,7 +26,7 @@ pub struct UnlockResult {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UnlockError {
-    pub kind: String, // "wrong_password" | "db_corrupted" | "rate_limited"
+    pub kind: String, // "wrong_password" | "db_corrupted" | "rate_limited" | "manual_restore_required"
     pub message: String,
     pub retry_after_ms: Option<u64>,
 }
@@ -90,6 +90,13 @@ pub fn unlock(password: String, state: State<'_, Mutex<AppState>>) -> Result<Unl
                 retry_after_ms: if next_delay > 0 { Some(next_delay) } else { None },
             })
         }
+        // Correct password, but the migrated DB failed verification while
+        // the legacy DB still exists (G2): not counted as a failed attempt.
+        Err(UnlockFailure::ManualRestoreRequired) => Err(UnlockError {
+            kind: lifecycle::MANUAL_RESTORE_REQUIRED.to_string(),
+            message: "The upgraded vault database failed verification; the previous database was kept. A manual restore is needed.".to_string(),
+            retry_after_ms: None,
+        }),
         Err(UnlockFailure::Other(e)) => Err(UnlockError {
             kind: "db_corrupted".to_string(),
             message: e,

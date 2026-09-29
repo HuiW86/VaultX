@@ -45,6 +45,37 @@ pub struct VaultMeta {
     /// `touch_id_enabled` cleared before Touch ID may be used again (C6).
     #[serde(default, skip_serializing_if = "is_false")]
     pub keychain_invalidation_pending: bool,
+    /// v2 after a v1→v2 migration: set in the same atomic meta write that
+    /// commits the migration and cleared once the legacy `vault.db` has been
+    /// deleted. Holds the source row counts every deletion must match (G2)
+    /// and what a manual restore of the legacy DB needs (E4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_db: Option<SupersededDb>,
+}
+
+/// Row counts of every table that holds user data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableCounts {
+    pub vaults: i64,
+    pub entries: i64,
+    pub trashed_entries: i64,
+    pub fields: i64,
+    pub password_history: i64,
+}
+
+/// The legacy `vault.db` awaiting deletion after a committed migration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupersededDb {
+    /// Row counts of the source DB at migration time. The legacy DB may only
+    /// be deleted while `vault.v2.db` holds exactly these counts.
+    pub counts: TableCounts,
+    /// KDF config (salt) of the v1 meta: with the old password it derives the
+    /// key of the legacy DB. Not secret (it was in the v1 meta).
+    pub legacy_kdf: KdfConfig,
+    /// v1 `recovery_blob`, so the old kit can still open the legacy DB while
+    /// it exists. Dropped together with the legacy DB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_recovery_blob: Option<String>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -63,6 +94,7 @@ impl VaultMeta {
             dek_wrapped_by_password: Some(dek_wrapped_by_password),
             dek_wrapped_by_recovery: None,
             keychain_invalidation_pending: false,
+            superseded_db: None,
         }
     }
 
@@ -76,7 +108,7 @@ impl VaultMeta {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KdfConfig {
     pub algorithm: String,
     pub params: KdfParams,
@@ -94,7 +126,7 @@ impl KdfConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KdfParams {
     pub m_cost: u32,
     pub t_cost: u32,
@@ -375,6 +407,7 @@ mod tests {
             dek_wrapped_by_password: None,
             dek_wrapped_by_recovery: None,
             keychain_invalidation_pending: false,
+            superseded_db: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -426,6 +459,7 @@ mod tests {
             dek_wrapped_by_password: None,
             dek_wrapped_by_recovery: None,
             keychain_invalidation_pending: false,
+            superseded_db: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 
@@ -490,6 +524,7 @@ mod tests {
             dek_wrapped_by_password: None,
             dek_wrapped_by_recovery: None,
             keychain_invalidation_pending: false,
+            superseded_db: None,
         };
         write_meta(dir.path(), &meta).unwrap();
 

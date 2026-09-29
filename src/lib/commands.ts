@@ -13,7 +13,7 @@ export interface UnlockResult {
 }
 
 export interface UnlockError {
-  kind: "wrong_password" | "db_corrupted" | "rate_limited";
+  kind: "wrong_password" | "db_corrupted" | "rate_limited" | "manual_restore_required";
   message: string;
   retry_after_ms?: number;
 }

@@ -20,6 +20,9 @@ const en = {
   "setup.recovery_download": "Download Recovery Kit",
   "setup.recovery_saved": "I've Saved My Recovery Kit",
   "setup.recovery_must_download": "You must download the recovery kit before continuing",
+  "setup.recovery_generating": "Creating your recovery kit...",
+  "setup.recovery_generate": "Create Recovery Kit",
+  "setup.recovery_generate_failed": "Could not create the recovery kit. Try again.",
   "setup.all_set": "You're All Set",
   "setup.all_set_desc": "Your vault is ready. Start adding your passwords.",
   "setup.get_started": "Get Started",
@@ -41,6 +44,8 @@ const en = {
   "lock.try_again_in": "Try again in {countdown}s",
   "lock.wait": "Wait {countdown}s",
   "lock.unlock": "Unlock",
+  "lock.manual_restore_title": "Your vault needs a manual restore",
+  "lock.manual_restore_desc": "The upgraded vault database failed its safety check, so VaultX did not open it. Nothing was deleted: your previous database (vault.db) is kept in the VaultX data folder. Quit VaultX, copy the whole folder (~/Library/Application Support/com.vaultx.app) to a safe place and do not delete any file in it. Then restore the previous database manually as described in the VaultX manual restore guide, or contact support with that copy.",
 
   // Sidebar
   "sidebar.vaults": "Vaults",
